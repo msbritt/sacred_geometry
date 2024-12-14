@@ -23,10 +23,10 @@ var primeConstants = [][]int{
 }
 
 func rollDice(n int) []int {
-	rand.Seed(time.Now().UnixNano())
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	dice := make([]int, n)
 	for i := range dice {
-		dice[i] = rand.Intn(6) + 1
+		dice[i] = r.Intn(6) + 1 // Generate a random number between 1 and 6 (inclusive).
 	}
 	return dice
 }
@@ -132,9 +132,9 @@ func combinations(n int, elements []string) [][]string {
 }
 
 type Result struct {
-	Prime int
+	Prime      int
 	Expression string
-	Found bool
+	Found      bool
 }
 
 func main() {
