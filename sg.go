@@ -120,7 +120,7 @@ func permutations(nums []int) [][]int {
 
 func combinations(n int, elements []string) [][]string {
 	if n == 0 {
-		return [][]string{[]string{}}
+		return [][]string{{}}
 	}
 	var result [][]string
 	for _, e := range elements {
