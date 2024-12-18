@@ -150,8 +150,8 @@ func main() {
 	}
 	primes := getPrimeConstants(spellLevel)
 	dice := rollDice(engineeringRanks)
-	fmt.Printf("Prime constants for spell level %d: %v\n", spellLevel, primes)
-	fmt.Printf("Rolling %d d6 dice: %v\n", engineeringRanks, dice)
+	fmt.Printf("    Prime constants for spell level %d: %v\n", spellLevel, primes)
+	fmt.Printf("    Rolling %d d6 dice: %v\n", engineeringRanks, dice)
 
 	var wg sync.WaitGroup
 	resultChan := make(chan Result, len(primes))
@@ -180,9 +180,9 @@ func main() {
 	success := true
 	for _, result := range results {
 		if result.Found {
-			fmt.Printf("Combination to achieve prime %d: %s = %d\n", result.Prime, result.Expression, result.Prime)
+			fmt.Printf("    Combination to achieve prime %d: %s = %d\n", result.Prime, result.Expression, result.Prime)
 		} else {
-			fmt.Printf("No combination found to achieve prime %d\n", result.Prime)
+			fmt.Printf("    No combination found to achieve prime %d\n", result.Prime)
 			success = false
 		}
 	}
