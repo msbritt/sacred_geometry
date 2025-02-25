@@ -25,9 +25,12 @@ var primeConstants = [][]int{
 }
 
 const (
-	casterLevel   = 6
-	engineering   = 6
 	maxSpellLevel = 9 // Maximum spell level possible in Pathfinder 1e
+)
+
+var (
+	casterLevel = 6
+	engineering = 6
 )
 
 type SpellRange struct {
@@ -393,14 +396,17 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 		spell := Spell{
 			Name:       record[0],
 			BaseLevel:  mustAtoi(record[1]),
-			Range:      record[2],
-			DamageRoll: parseDamage(record[3]),
-			Duration:   parseDuration(record[4]),
+			Range:      record[3],
+			DamageRoll: parseDamage(record[4]),
+			Duration:   parseDuration(record[5]),
 		}
 
-		// Parse metamagic feats if present
-		if len(record) > 5 && record[5] != "" {
-			spell.MetamagicFeats = strings.Split(record[5], ";")
+		// Parse metamagic feats if present (now in column 6)
+		if len(record) > 6 && record[6] != "" {
+			spell.MetamagicFeats = strings.Split(record[6], ";")
+			if debugMode {
+				fmt.Printf("Debug: Loaded metamagic feats for %s: %v\n", spell.Name, spell.MetamagicFeats)
+			}
 		}
 
 		spells = append(spells, spell)
@@ -410,13 +416,16 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 }
 
 var debugMode bool
+var verboseMode bool
 
 func main() {
-	// Check for debug flag
+	// Check for debug and verbose flags
 	for _, arg := range os.Args[1:] {
-		if arg == "--debug" {
+		switch arg {
+		case "--debug":
 			debugMode = true
-			break
+		case "--verbose":
+			verboseMode = true
 		}
 	}
 
@@ -426,9 +435,6 @@ func main() {
 		fmt.Printf("Error reading spells.csv: %v\n", err)
 		return
 	}
-
-	// Initialize range calculator
-	ranges := NewRangeCalculator(casterLevel)
 
 	// Process each spell
 	for _, spell := range spells {
@@ -443,6 +449,12 @@ func main() {
 			continue
 		}
 
+		// Set caster level for damage and range calculations
+		casterLevel = spellLevel
+
+		// Initialize range calculator
+		ranges := NewRangeCalculator(casterLevel)
+
 		if debugMode {
 			fmt.Printf("Debug: Before applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
 		}
@@ -454,8 +466,22 @@ func main() {
 		primes := getPrimeConstants(spellLevel)
 		dice := rollDice(engineering)
 
-		fmt.Printf("\nCalculating for %s (Level %d):\n", spellCopy.Name, spellLevel)
-		fmt.Printf("Prime constants for spell level %d: %v\n", spellLevel, primes)
+		// Build metamagic string with level increases
+		var metamagicParts []string
+		for _, feat := range spell.MetamagicFeats {
+			if effect, exists := MetamagicEffects[strings.ToLower(feat)]; exists {
+				metamagicParts = append(metamagicParts, fmt.Sprintf("%s: +%d", feat, effect.LevelIncrease))
+			}
+		}
+
+		metamagicStr := fmt.Sprintf("Base Level %d", spell.BaseLevel)
+		if len(metamagicParts) > 0 {
+			metamagicStr += fmt.Sprintf("; metamagic adjustments — %s; Final Spell Level: %d",
+				strings.Join(metamagicParts, ", "), spellLevel)
+		}
+
+		fmt.Printf("\nCalculating %s: %s\n", spellCopy.Name, metamagicStr)
+		fmt.Printf("Prime constants for modified spell level %d: %v\n", spellLevel, primes)
 		fmt.Printf("Rolling %d d6 dice: %v\n", engineering, dice)
 
 		// Use existing concurrent prime calculation logic
@@ -475,17 +501,25 @@ func main() {
 		close(resultChan)
 
 		success := true
+		var expressions []Result
 		for result := range resultChan {
 			if !result.Found {
 				success = false
 				break
 			}
+			expressions = append(expressions, result)
 		}
 
 		if success {
 			fmt.Printf("\nSuccess: Sacred Geometry succeeded for %s!\n", spellCopy.Name)
-			fmt.Printf("Original spell: %s (Level %d)\n", spell.Name, spell.BaseLevel)
-			fmt.Printf("With metamagic: Level %d\n", spellLevel)
+
+			// Display the mathematical expressions for each prime only in verbose mode
+			if verboseMode {
+				fmt.Printf("\nPrime number calculations:\n")
+				for _, result := range expressions {
+					fmt.Printf("- %d = %s\n", result.Prime, result.Expression)
+				}
+			}
 
 			// Display metamagic effects
 			for _, metamagic := range spellCopy.MetamagicFeats {
