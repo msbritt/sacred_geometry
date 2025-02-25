@@ -29,8 +29,9 @@ const (
 )
 
 var (
-	casterLevel = 6
-	engineering = 6
+	casterLevel        = 6
+	engineering        = 6
+	TransmuterOfKorada = true // When true, Transmutation spells get +1 caster level
 )
 
 type SpellRange struct {
@@ -71,6 +72,7 @@ type DamageRoll struct {
 type Spell struct {
 	Name           string
 	BaseLevel      int
+	School         string
 	Range          string
 	DamageRoll     DamageRoll
 	Duration       Duration
@@ -233,7 +235,8 @@ var MetamagicEffects = map[string]MetamagicEffect{
 		LevelIncrease: 1,
 		Description:   "Adds 5 damage dice to spells with damage dice that scale with level",
 		Apply: func(spell *Spell) {
-			if spell.DamageRoll.PerLevel && spell.DamageRoll.MaxDice > 0 {
+			if (spell.DamageRoll.PerLevel && spell.DamageRoll.MaxDice > 0) ||
+				(spell.Name == "Fireball" && spell.DamageRoll.MaxDice > 0) {
 				beforeMax := spell.DamageRoll.MaxDice
 				spell.DamageRoll.MaxDice += 5 // Add 5 to whatever the original max was
 				fmt.Printf("Debug: Intensified increased MaxDice from %d to %d\n",
@@ -318,6 +321,9 @@ func parseDamage(dmgStr string) DamageRoll {
 	// Set default max dice for per-level spells
 	if roll.PerLevel {
 		roll.MaxDice = 5 // Default max for most spells
+	} else if roll.NumDice == 6 && roll.DiceType == 6 {
+		// Special case for Fireball which has 6d6 damage with a max of 10d6
+		roll.MaxDice = 10
 	}
 
 	return roll
@@ -396,6 +402,7 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 		spell := Spell{
 			Name:       record[0],
 			BaseLevel:  mustAtoi(record[1]),
+			School:     record[2],
 			Range:      record[3],
 			DamageRoll: parseDamage(record[4]),
 			Duration:   parseDuration(record[5]),
@@ -449,11 +456,20 @@ func main() {
 			continue
 		}
 
-		// Set caster level for damage and range calculations
-		casterLevel = spellLevel
+		// Use the global caster level instead of setting it to the spell level
+		// casterLevel = spellLevel  // This line is commented out
+
+		// Apply Transmuter of Korada bonus if applicable
+		spellCasterLevel := casterLevel // Use a local variable for this spell's caster level
+		if TransmuterOfKorada && strings.ToLower(spell.School) == "transmutation" {
+			spellCasterLevel += 1
+			if debugMode {
+				fmt.Printf("Debug: Applied Transmuter of Korada bonus (+1 caster level) to %s\n", spell.Name)
+			}
+		}
 
 		// Initialize range calculator
-		ranges := NewRangeCalculator(casterLevel)
+		ranges := NewRangeCalculator(spellCasterLevel)
 
 		if debugMode {
 			fmt.Printf("Debug: Before applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
@@ -478,6 +494,11 @@ func main() {
 		if len(metamagicParts) > 0 {
 			metamagicStr += fmt.Sprintf("; metamagic adjustments — %s; Final Spell Level: %d",
 				strings.Join(metamagicParts, ", "), spellLevel)
+		}
+
+		// Add Transmuter of Korada information if applicable
+		if TransmuterOfKorada && strings.ToLower(spell.School) == "transmutation" {
+			metamagicStr += fmt.Sprintf("; Transmuter of Korada: +1 caster level (CL %d)", spellCasterLevel)
 		}
 
 		fmt.Printf("\nCalculating %s: %s\n", spellCopy.Name, metamagicStr)
@@ -542,16 +563,16 @@ func main() {
 
 			// Display damage with all modifications
 			if spellCopy.DamageRoll.NumDice > 0 {
-				baseDamage := formatDamage(spell.DamageRoll, casterLevel)
+				baseDamage := formatDamage(spell.DamageRoll, spellCasterLevel)
 				fmt.Printf("Base Damage: %s\n", baseDamage)
 
 				// Show Intensified damage if present
 				for _, metamagic := range spellCopy.MetamagicFeats {
 					if strings.ToLower(metamagic) == "intensified" {
 						// Calculate actual dice after intensified
-						intensifiedDamage := formatDamage(spellCopy.DamageRoll, casterLevel)
-						actualDice := spellCopy.DamageRoll.NumDice * casterLevel
-						if actualDice > spellCopy.DamageRoll.MaxDice {
+						intensifiedDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel)
+						actualDice := spellCopy.DamageRoll.NumDice * spellCasterLevel
+						if spellCopy.DamageRoll.PerLevel && actualDice > spellCopy.DamageRoll.MaxDice {
 							actualDice = spellCopy.DamageRoll.MaxDice
 						}
 						fmt.Printf("Intensified Damage: %s (max dice increased to %d)\n",
@@ -563,7 +584,7 @@ func main() {
 				// Show Empowered damage if present
 				for _, metamagic := range spellCopy.MetamagicFeats {
 					if strings.ToLower(metamagic) == "empower" {
-						empoweredDamage := formatDamage(spellCopy.DamageRoll, casterLevel)
+						empoweredDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel)
 						fmt.Printf("Empowered Damage: %s (×1.5)\n", empoweredDamage)
 						break
 					}
@@ -571,7 +592,7 @@ func main() {
 			}
 
 			if spellCopy.Duration.Value > 0 {
-				fmt.Printf("Duration: %s\n", formatDuration(spellCopy.Duration, casterLevel))
+				fmt.Printf("Duration: %s\n", formatDuration(spellCopy.Duration, spellCasterLevel))
 			}
 		} else {
 			fmt.Printf("\nFailure: Sacred Geometry failed for %s\n", spellCopy.Name)
