@@ -239,8 +239,10 @@ var MetamagicEffects = map[string]MetamagicEffect{
 				(spell.Name == "Fireball" && spell.DamageRoll.MaxDice > 0) {
 				beforeMax := spell.DamageRoll.MaxDice
 				spell.DamageRoll.MaxDice += 5 // Add 5 to whatever the original max was
-				fmt.Printf("Debug: Intensified increased MaxDice from %d to %d\n",
-					beforeMax, spell.DamageRoll.MaxDice)
+				if debugMode {
+					fmt.Printf("Debug: Intensified increased MaxDice from %d to %d\n",
+						beforeMax, spell.DamageRoll.MaxDice)
+				}
 			}
 		},
 	},
@@ -471,17 +473,6 @@ func main() {
 		// Initialize range calculator
 		ranges := NewRangeCalculator(spellCasterLevel)
 
-		if debugMode {
-			fmt.Printf("Debug: Before applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
-		}
-		applyMetamagicEffects(&spellCopy)
-		if debugMode {
-			fmt.Printf("Debug: After applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
-		}
-
-		primes := getPrimeConstants(spellLevel)
-		dice := rollDice(engineering)
-
 		// Build metamagic string with level increases
 		var metamagicParts []string
 		for _, feat := range spell.MetamagicFeats {
@@ -502,6 +493,18 @@ func main() {
 		}
 
 		fmt.Printf("\nCalculating %s: %s\n", spellCopy.Name, metamagicStr)
+
+		if debugMode {
+			fmt.Printf("Debug: Before applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
+		}
+		applyMetamagicEffects(&spellCopy)
+		if debugMode {
+			fmt.Printf("Debug: After applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
+		}
+
+		primes := getPrimeConstants(spellLevel)
+		dice := rollDice(engineering)
+
 		fmt.Printf("Prime constants for modified spell level %d: %v\n", spellLevel, primes)
 		fmt.Printf("Rolling %d d6 dice: %v\n", engineering, dice)
 
