@@ -1,0 +1,7 @@
+Name,BaseLevel,School,Range,Damage,Duration,Metamagic
+TestFireball,3,Evocation,long,6d6,instantaneous,empower;intensified
+TestShield,1,Abjuration,personal,,1 minute/level,extend
+TestMageArmor,1,Conjuration,touch,,1 hour/level,extend
+TestMagicMissile,1,Evocation,medium,1d4+1,instantaneous,empower
+TestShockingGrasp,1,Evocation,touch,1d6/level,instantaneous,reach;empower;intensified
+TestEnlargePerson,1,Transmutation,close,,1 minute/level,extend 

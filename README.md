@@ -7,11 +7,134 @@ See [the Sacred Geometry page](https://aonprd.com/FeatDisplay.aspx?ItemName=Sacr
 ## Code
 The code calculates all 3 primes in parallel, sorts the values, and alerts if you were successful or not.  To use, you must have Golang installed:
 
-`go run sg.go 4 10`
+### Basic Usage
 
-where the first value is the metmagic level of the spell and the second is the number of points your character has in Engineering.
+```bash
+go run sg.go
+```
+
+This will run the program with default settings (caster level 6, engineering 6, and process all spells in spells.csv).
+
+### Command Line Options
+
+You can customize the execution with command line flags:
+
+```bash
+# Enable debug mode for detailed logging
+go run sg.go --debug
+
+# Enable verbose mode for additional output
+go run sg.go --verbose
+```
+
+### Configuration
+
+The program uses the following configuration variables (defined in the code):
+
+- `casterLevel`: Your character's caster level (default: 6)
+- `engineering`: Your character's ranks in Knowledge (Engineering) (default: 6)
+- `TransmuterOfKorada`: When true, Transmutation spells get +1 caster level (default: true)
+
+### Spell Data
+
+Spell information is read from `spells.csv` in the following format:
+```
+Name,BaseLevel,School,Range,Damage,Duration,Metamagic
+Fireball,3,Evocation,long,6d6,instantaneous,empower;intensified
+```
+
+You can modify this file to add your own spells or change the metamagic feats applied.
+
+### Compiling
 
 For additional speed, you can compile it with:
-`go build -o sg sg.go`
+```bash
+go build -o sg sg.go
+```
 
-Then run with `sg 4 10`
+Then run with:
+```bash
+./sg
+```
+
+or with options:
+```bash
+./sg --debug --verbose
+```
+
+## Testing
+
+The codebase includes comprehensive test coverage to ensure functionality and prevent regressions. Tests are written using Go's standard testing package.
+
+### Running Tests
+
+To run all tests:
+
+```bash
+go test
+```
+
+For more verbose output showing each test that runs:
+
+```bash
+go test -v
+```
+
+### Test Coverage
+
+To check test coverage:
+
+```bash
+go test -cover
+```
+
+Current test coverage is approximately 59% of all statements. The core algorithmic functions have higher coverage.
+
+For a detailed HTML report of test coverage:
+
+```bash
+go test -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
+This will open a browser window showing which lines of code are covered by tests.
+
+### Test Structure
+
+The test suite includes:
+
+1. **Unit tests** for individual functions
+2. **Integration tests** for spell parsing and calculations
+3. **Validation tests** for the Sacred Geometry algorithm
+
+The test suite covers the following key components:
+
+- **Prime number constants**: Verification of prime number retrieval for different spell levels
+- **Mathematical expressions**: Testing of expression evaluation with various operations
+- **Spell range calculations**: Validation of range calculations for different caster levels
+- **Metamagic effects**: Testing the application and stacking of different metamagic feats
+- **Damage and duration parsing/formatting**: Ensuring correct parsing and formatting of spell attributes
+- **CSV parsing**: Testing the reading and parsing of spell data from CSV files
+- **Special features**: Testing of special features like Transmuter of Korada
+- **Core algorithm**: Testing the prime number combination finder
+
+### Adding New Tests
+
+When adding new functionality, please also add corresponding tests. Follow the existing patterns in `sg_test.go` for consistency.
+
+Test data files:
+- `test_spells.csv`: Contains sample spells for testing the CSV parsing functionality
+
+### Continuous Integration
+
+For automated testing on each commit, consider setting up a CI pipeline using GitHub Actions or similar services.
+
+### Future Test Improvements
+
+Potential areas for expanding test coverage:
+
+1. **Performance benchmarks**: Add benchmarks for performance-critical functions like `findCombinationToPrime`
+2. **Property-based testing**: Implement property-based tests for functions like `evalExpression` to test with randomly generated inputs
+3. **End-to-end tests**: Add tests that simulate the entire workflow from command-line input to output
+4. **Edge cases**: Expand test coverage for edge cases and error handling
+5. **Mocking**: Implement mocks for functions with side effects (like random number generation) to make tests more deterministic
