@@ -1,10 +1,13 @@
 # Sacred Geometry
+
 Solves prime math problem for the Pathfinder 1E Feat Sacred Geometry
 
 ## Description
+
 See [the Sacred Geometry page](https://aonprd.com/FeatDisplay.aspx?ItemName=Sacred%20Geometry) for details.  In short, based on the number of ranks in Knowledge (Engineering) you have, you will cast N d6 dice.  Based on the level of spell you want to cast, after applying Metamagic to it, there are 3 prime numbers (as the level goes up, so do the prime numbers).  Using the value of each d6 no more than once, you must use basic math operations (add, subtract, multiply, and divide) a subset of those dice values to generate each prime required.  If you can generate all three prime values, then you can cast the metamagic enhanced spell at its original level.
 
 ## Code
+
 The code calculates all 3 primes in parallel, sorts the values, and alerts if you were successful or not.  To use, you must have Golang installed:
 
 ### Basic Usage
@@ -38,7 +41,8 @@ The program uses the following configuration variables (defined in the code):
 ### Spell Data
 
 Spell information is read from `spells.csv` in the following format:
-```
+
+```csv
 Name,BaseLevel,School,Range,Damage,Duration,Metamagic
 Fireball,3,Evocation,long,6d6,instantaneous,empower;intensified
 ```
@@ -48,16 +52,19 @@ You can modify this file to add your own spells or change the metamagic feats ap
 ### Compiling
 
 For additional speed, you can compile it with:
+
 ```bash
 go build -o sg sg.go
 ```
 
 Then run with:
+
 ```bash
 ./sg
 ```
 
 or with options:
+
 ```bash
 ./sg --debug --verbose
 ```
@@ -123,6 +130,7 @@ The test suite covers the following key components:
 When adding new functionality, please also add corresponding tests. Follow the existing patterns in `sg_test.go` for consistency.
 
 Test data files:
+
 - `test_spells.csv`: Contains sample spells for testing the CSV parsing functionality
 
 ### Continuous Integration

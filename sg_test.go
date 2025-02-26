@@ -372,19 +372,13 @@ func TestTransmuterOfKorada(t *testing.T) {
 
 	// Create a transmutation spell
 	transmutationSpell := Spell{
-		Name:      "Enlarge Person",
-		BaseLevel: 1,
-		School:    "Transmutation",
-		Range:     "close",
-		Duration:  Duration{Value: 1, Unit: "minute", IsLevel: true},
+		School:   "Transmutation",
+		Duration: Duration{Value: 1, Unit: "minute", IsLevel: true},
 	}
 
 	// Create a non-transmutation spell
 	evocationSpell := Spell{
-		Name:      "Magic Missile",
-		BaseLevel: 1,
-		School:    "Evocation",
-		Range:     "medium",
+		School: "Evocation",
 	}
 
 	// Set a test caster level
