@@ -578,8 +578,8 @@ func main() {
 						if spellCopy.DamageRoll.PerLevel && actualDice > spellCopy.DamageRoll.MaxDice {
 							actualDice = spellCopy.DamageRoll.MaxDice
 						}
-						fmt.Printf("Intensified Damage: %s (max dice increased to %d)\n",
-							intensifiedDamage, spellCopy.DamageRoll.MaxDice)
+						fmt.Printf("Intensified Damage: %s (%d dice, max dice increased to %d)\n",
+							intensifiedDamage, actualDice, spellCopy.DamageRoll.MaxDice)
 						break
 					}
 				}
