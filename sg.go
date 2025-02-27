@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+// ANSI color codes for terminal output
+const (
+	colorRed    = "\x1b[91m"
+	colorGreen  = "\x1b[92m"
+	colorYellow = "\x1b[93m"
+	colorReset  = "\x1b[0m"
+)
+
 var primeConstants = [][]int{
 	{3, 5, 7},
 	{11, 13, 17},
@@ -639,7 +647,7 @@ func main() {
 		}
 
 		if success {
-			fmt.Printf("\nSuccess: Sacred Geometry succeeded for %s!\n", spellCopy.Name)
+			fmt.Printf("\n%sSuccess:%s Sacred Geometry succeeded for %s!\n", colorGreen, colorReset, spellCopy.Name)
 
 			// Display the mathematical expressions for each prime only in verbose mode
 			if verboseMode {
@@ -727,7 +735,7 @@ func main() {
 				fmt.Printf("Duration: %s\n", formatDuration(spellCopy.Duration, spellCasterLevel))
 			}
 		} else {
-			fmt.Printf("\nFailure: Sacred Geometry failed for %s\n", spellCopy.Name)
+			fmt.Printf("\n%sFailure:%s Sacred Geometry failed for %s\n", colorRed, colorReset, spellCopy.Name)
 		}
 	}
 }
