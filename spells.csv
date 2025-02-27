@@ -1,7 +1,10 @@
 Name,BaseLevel,School,Range,Damage,Duration,Metamagic
-#Fireball,3,Evocation,long,6d6,instantaneous,empower;intensified
-Shield,1,Abjuration,personal,,1 minute/level,extend
-Mage Armor,1,Conjuration,touch,,1 hour/level,extend
-Magic Missile,1,Evocation,medium,1d4+1,instantaneous,empower
-Shocking Grasp,1,Evocation,touch,1d6/level,instantaneous,wayang_spell_hunter;reach;intensified
 Enlarge Person,1,Transmutation,close,,1 minute/level,extend
+Mage Armor,1,Conjuration,touch,,1 hour/level,extend
+#Magic Missile,1,Evocation,medium,1d4+1,instantaneous,empower
+#Shield,1,Abjuration,personal,,1 minute/level,extend
+Shocking Grasp,1,Evocation,touch,1d6/level,instantaneous,wayang_spell_hunter;reach;intensified
+Snowball,1,Evocation,close,1d6/level,instantaneous,intensified
+Bull's Strength,2,Transmutation,touch,,1 minute/level,extend
+Mirror Image,2,Illusion,personal,,1 minute/level,extend
+#Fireball,3,Evocation,long,6d6,instantaneous,empower;intensified
