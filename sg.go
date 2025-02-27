@@ -247,6 +247,13 @@ var MetamagicEffects = map[string]MetamagicEffect{
 			}
 		},
 	},
+	"wayang_spell_hunter": {
+		LevelIncrease: -1,
+		Description:   "Lowers the total level of the spell by 1",
+		Apply: func(spell *Spell) {
+			// No additional effects to apply, the level reduction is handled in calculateSpellLevel
+		},
+	},
 }
 
 func calculateSpellLevel(spell Spell) int {
