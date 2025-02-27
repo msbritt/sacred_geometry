@@ -63,11 +63,12 @@ type Duration struct {
 }
 
 type DamageRoll struct {
-	NumDice  int
-	DiceType int  // e.g., 6 for d6
-	Modifier int  // for things like Magic Missile's +1
-	PerLevel bool // if damage scales with level
-	MaxDice  int  // maximum number of dice (e.g., 5 for Shocking Grasp)
+	NumDice     int
+	DiceType    int  // e.g., 6 for d6
+	Modifier    int  // for things like Magic Missile's +1
+	PerLevel    bool // if damage scales with level
+	MaxDice     int  // maximum number of dice (e.g., 5 for Shocking Grasp)
+	Projectiles int  // for spells like Magic Missile that have multiple projectiles
 }
 
 type Spell struct {
@@ -298,13 +299,30 @@ func mustAtoi(s string) int {
 	return i
 }
 
-// Helper function to parse damage string (e.g., "1d6/level", "6d6", "1d4+1")
-func parseDamage(dmgStr string) DamageRoll {
+// Helper function to parse damage string (e.g., "1d6/level(max:5)", "6d6", "1d4+1")
+func parseDamage(dmgStr string, spellName string) DamageRoll {
 	if dmgStr == "" {
 		return DamageRoll{}
 	}
 
 	var roll DamageRoll
+
+	// Extract max dice if specified in the format (max:X)
+	maxDiceMatch := false
+	if strings.Contains(dmgStr, "(max:") {
+		parts := strings.Split(dmgStr, "(max:")
+		if len(parts) == 2 {
+			maxPart := parts[1]
+			maxPart = strings.TrimSuffix(maxPart, ")")
+			maxDice, err := strconv.Atoi(maxPart)
+			if err == nil {
+				roll.MaxDice = maxDice
+				maxDiceMatch = true
+			}
+			// Remove the max dice part from the damage string
+			dmgStr = parts[0]
+		}
+	}
 
 	// Check for per-level scaling
 	if strings.Contains(dmgStr, "/level") {
@@ -328,18 +346,22 @@ func parseDamage(dmgStr string) DamageRoll {
 		roll.DiceType, _ = strconv.Atoi(diceParts[1])
 	}
 
-	// Set default max dice for per-level spells
-	if roll.PerLevel {
-		roll.MaxDice = 5 // Default max for most spells
-	} else if roll.NumDice == 6 && roll.DiceType == 6 {
-		// Special case for Fireball which has 6d6 damage with a max of 10d6
-		roll.MaxDice = 10
+	// Set default max dice for per-level spells if not explicitly specified
+	if roll.PerLevel && !maxDiceMatch {
+		roll.MaxDice = 5 // Default max for most spells as a fallback
+	}
+
+	// Special handling for Magic Missile
+	if spellName == "Magic Missile" {
+		// Magic Missile always has 1 projectile at level 1, +1 for every 2 levels after that, max 5
+		// This will be calculated at runtime based on caster level
+		roll.Projectiles = 1 // Base value, will be adjusted based on caster level
 	}
 
 	return roll
 }
 
-func formatDamage(roll DamageRoll, level int) string {
+func formatDamage(roll DamageRoll, level int, spellName string) string {
 	if roll.NumDice == 0 {
 		return ""
 	}
@@ -357,6 +379,20 @@ func formatDamage(roll DamageRoll, level int) string {
 	if roll.Modifier > 0 {
 		result += fmt.Sprintf("+%d", roll.Modifier)
 	}
+
+	// Special handling for Magic Missile
+	if spellName == "Magic Missile" {
+		// Calculate number of missiles based on caster level
+		// 1 at level 1, +1 for every 2 levels after that, max 5
+		projectiles := 1 + (level-1)/2
+		if projectiles > 5 {
+			projectiles = 5 // Maximum of 5 missiles
+		}
+
+		// Append the number of missiles to the damage string
+		result += fmt.Sprintf(" (%d missiles)", projectiles)
+	}
+
 	return result
 }
 
@@ -474,7 +510,7 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 			BaseLevel:  mustAtoi(record[1]),
 			School:     record[2],
 			Range:      record[3],
-			DamageRoll: parseDamage(record[4]),
+			DamageRoll: parseDamage(record[4], record[0]),
 			Duration:   parseDuration(record[5]),
 		}
 
@@ -634,14 +670,33 @@ func main() {
 
 			// Display damage with all modifications
 			if spellCopy.DamageRoll.NumDice > 0 {
-				baseDamage := formatDamage(spell.DamageRoll, spellCasterLevel)
-				fmt.Printf("Base Damage: %s\n", baseDamage)
+				baseDamage := formatDamage(spell.DamageRoll, spellCasterLevel, spell.Name)
+
+				// Special handling for Magic Missile display
+				if spell.Name == "Magic Missile" {
+					// Calculate number of missiles based on caster level
+					projectiles := 1 + (spellCasterLevel-1)/2
+					if projectiles > 5 {
+						projectiles = 5 // Maximum of 5 missiles
+					}
+					fmt.Printf("Base Damage: %s\n", baseDamage)
+					fmt.Printf("Number of Missiles: %d (1 at level 1, +1 per 2 levels, max 5)\n", projectiles)
+				} else if spell.DamageRoll.PerLevel {
+					actualDice := spell.DamageRoll.NumDice * spellCasterLevel
+					if actualDice > spell.DamageRoll.MaxDice {
+						actualDice = spell.DamageRoll.MaxDice
+					}
+					fmt.Printf("Base Damage: %s (%dd%d, max %d dice)\n",
+						baseDamage, actualDice, spell.DamageRoll.DiceType, spell.DamageRoll.MaxDice)
+				} else {
+					fmt.Printf("Base Damage: %s\n", baseDamage)
+				}
 
 				// Show Intensified damage if present
 				for _, metamagic := range spellCopy.MetamagicFeats {
 					if strings.ToLower(metamagic) == "intensified" {
 						// Calculate actual dice after intensified
-						intensifiedDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel)
+						intensifiedDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel, spell.Name)
 						actualDice := spellCopy.DamageRoll.NumDice * spellCasterLevel
 						if spellCopy.DamageRoll.PerLevel && actualDice > spellCopy.DamageRoll.MaxDice {
 							actualDice = spellCopy.DamageRoll.MaxDice
@@ -655,8 +710,14 @@ func main() {
 				// Show Empowered damage if present
 				for _, metamagic := range spellCopy.MetamagicFeats {
 					if strings.ToLower(metamagic) == "empower" {
-						empoweredDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel)
-						fmt.Printf("Empowered Damage: %s (×1.5)\n", empoweredDamage)
+						empoweredDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel, spell.Name)
+
+						// Special handling for Magic Missile with Empower
+						if spell.Name == "Magic Missile" {
+							fmt.Printf("Empowered Damage: %s (damage ×1.5)\n", empoweredDamage)
+						} else {
+							fmt.Printf("Empowered Damage: %s (×1.5)\n", empoweredDamage)
+						}
 						break
 					}
 				}
