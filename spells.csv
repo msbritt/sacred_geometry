@@ -1,5 +1,5 @@
 Name,BaseLevel,School,Range,Damage,Duration,Metamagic
-Fireball,3,Evocation,long,6d6,instantaneous,empower;intensified
+#Fireball,3,Evocation,long,6d6,instantaneous,empower;intensified
 Shield,1,Abjuration,personal,,1 minute/level,extend
 Mage Armor,1,Conjuration,touch,,1 hour/level,extend
 Magic Missile,1,Evocation,medium,1d4+1,instantaneous,empower
