@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -376,6 +377,60 @@ func parseDuration(durStr string) Duration {
 	return duration
 }
 
+// CommentFilterReader is a custom io.Reader that skips lines starting with a comment prefix
+type CommentFilterReader struct {
+	reader        *bufio.Reader
+	commentPrefix string
+	buffer        []byte
+}
+
+// Read implements the io.Reader interface
+func (r *CommentFilterReader) Read(p []byte) (n int, err error) {
+	if len(r.buffer) > 0 {
+		// If we have data in the buffer, return it
+		n = copy(p, r.buffer)
+		r.buffer = r.buffer[n:]
+		return n, nil
+	}
+
+	// Read a line
+	for {
+		line, err := r.reader.ReadBytes('\n')
+		if err != nil && err != io.EOF {
+			return 0, err
+		}
+
+		// If we've reached EOF and have no data, return EOF
+		if err == io.EOF && len(line) == 0 {
+			return 0, io.EOF
+		}
+
+		// Skip comment lines
+		if len(line) > 0 && len(r.commentPrefix) > 0 && strings.HasPrefix(strings.TrimSpace(string(line)), r.commentPrefix) {
+			if debugMode {
+				fmt.Printf("Debug: Skipping comment line: %s", string(line))
+			}
+			// If we've reached EOF, return it
+			if err == io.EOF {
+				return 0, io.EOF
+			}
+			continue
+		}
+
+		// Copy data to output and buffer any remaining
+		n = copy(p, line)
+		if n < len(line) {
+			r.buffer = line[n:]
+		}
+
+		// If we've reached EOF, we'll return it on the next call
+		if err == io.EOF && n > 0 {
+			return n, nil
+		}
+		return n, err
+	}
+}
+
 func readSpellsFromCSV(filename string) ([]Spell, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -383,7 +438,13 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	// Create a custom reader that skips comment lines
+	commentFilterReader := &CommentFilterReader{
+		reader:        bufio.NewReader(file),
+		commentPrefix: "#",
+	}
+
+	reader := csv.NewReader(commentFilterReader)
 	var spells []Spell
 
 	// Skip header row
