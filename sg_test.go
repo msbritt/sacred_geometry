@@ -118,30 +118,45 @@ func TestCalculateSpellLevel(t *testing.T) {
 func TestParseDamage(t *testing.T) {
 	tests := []struct {
 		damageStr string
+		spellName string
 		expected  DamageRoll
 	}{
 		{
 			"1d6/level",
+			"Generic Spell",
 			DamageRoll{NumDice: 1, DiceType: 6, Modifier: 0, PerLevel: true, MaxDice: 5},
 		},
 		{
+			"1d6/level(max:10)",
+			"Generic Spell",
+			DamageRoll{NumDice: 1, DiceType: 6, Modifier: 0, PerLevel: true, MaxDice: 10},
+		},
+		{
 			"6d6",
-			DamageRoll{NumDice: 6, DiceType: 6, Modifier: 0, PerLevel: false, MaxDice: 10},
+			"Generic Spell",
+			DamageRoll{NumDice: 6, DiceType: 6, Modifier: 0, PerLevel: false, MaxDice: 0},
 		},
 		{
 			"1d4+1",
+			"Generic Spell",
 			DamageRoll{NumDice: 1, DiceType: 4, Modifier: 1, PerLevel: false, MaxDice: 0},
 		},
 		{
+			"1d4+1",
+			"Magic Missile",
+			DamageRoll{NumDice: 1, DiceType: 4, Modifier: 1, PerLevel: false, MaxDice: 0, Projectiles: 1},
+		},
+		{
 			"",
+			"Generic Spell",
 			DamageRoll{},
 		},
 	}
 
 	for _, test := range tests {
-		result := parseDamage(test.damageStr)
+		result := parseDamage(test.damageStr, test.spellName)
 		if !reflect.DeepEqual(result, test.expected) {
-			t.Errorf("parseDamage(%s) = %+v, expected %+v", test.damageStr, result, test.expected)
+			t.Errorf("parseDamage(%s, %s) = %+v, expected %+v", test.damageStr, test.spellName, result, test.expected)
 		}
 	}
 }
@@ -188,36 +203,54 @@ func TestParseDuration(t *testing.T) {
 // TestFormatDamage tests the damage formatting
 func TestFormatDamage(t *testing.T) {
 	tests := []struct {
-		roll     DamageRoll
-		level    int
-		expected string
+		roll      DamageRoll
+		level     int
+		spellName string
+		expected  string
 	}{
 		{
 			DamageRoll{NumDice: 1, DiceType: 6, Modifier: 0, PerLevel: true, MaxDice: 5},
 			3,
+			"Generic Spell",
 			"3d6",
 		},
 		{
 			DamageRoll{NumDice: 1, DiceType: 6, Modifier: 0, PerLevel: true, MaxDice: 5},
 			7, // Should cap at MaxDice (5)
+			"Generic Spell",
 			"5d6",
 		},
 		{
 			DamageRoll{NumDice: 6, DiceType: 6, Modifier: 0, PerLevel: false, MaxDice: 10},
 			3,
+			"Generic Spell",
 			"6d6",
 		},
 		{
 			DamageRoll{NumDice: 1, DiceType: 4, Modifier: 1, PerLevel: false, MaxDice: 0},
 			3,
+			"Generic Spell",
 			"1d4+1",
+		},
+		{
+			DamageRoll{NumDice: 1, DiceType: 4, Modifier: 1, PerLevel: false, MaxDice: 0, Projectiles: 1},
+			3,
+			"Magic Missile",
+			"1d4+1 (2 missiles)",
+		},
+		{
+			DamageRoll{NumDice: 1, DiceType: 4, Modifier: 1, PerLevel: false, MaxDice: 0, Projectiles: 1},
+			9,
+			"Magic Missile",
+			"1d4+1 (5 missiles)",
 		},
 	}
 
 	for _, test := range tests {
-		result := formatDamage(test.roll, test.level)
+		result := formatDamage(test.roll, test.level, test.spellName)
 		if result != test.expected {
-			t.Errorf("formatDamage(%+v, %d) = %s, expected %s", test.roll, test.level, result, test.expected)
+			t.Errorf("formatDamage(%+v, %d, %s) = %s, expected %s",
+				test.roll, test.level, test.spellName, result, test.expected)
 		}
 	}
 }
