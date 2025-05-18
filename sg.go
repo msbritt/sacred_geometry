@@ -305,7 +305,7 @@ var MetamagicEffects = map[string]MetamagicEffect{
 		Apply: func(spell *Spell) {
 			// Apply reach levels based on the spell's ReachLevel
 			for i := 0; i < spell.ReachLevel; i++ {
-				switch spell.Range {
+				switch strings.ToLower(spell.Range) {
 				case "touch":
 					spell.Range = "close"
 				case "close":
@@ -770,9 +770,12 @@ func main() {
 				{Align: simpletable.AlignLeft, Text: "Updated Range"},
 				{Align: simpletable.AlignLeft, Text: fmt.Sprintf("Dice Count: CL=%d", casterLevel)},
 				{Align: simpletable.AlignLeft, Text: fmt.Sprintf("Dice Count: CL=%d", casterLevel+2)},
+				{Align: simpletable.AlignLeft, Text: "Base Level"},
 				{Align: simpletable.AlignLeft, Text: "Empower"},
 				{Align: simpletable.AlignLeft, Text: "Intensify"},
 				{Align: simpletable.AlignLeft, Text: "Reach"},
+				{Align: simpletable.AlignLeft, Text: "Extend"},
+				{Align: simpletable.AlignLeft, Text: "Total Level"},
 			},
 		}
 
@@ -790,6 +793,9 @@ func main() {
 			if effectiveSpellLevel < 1 {
 				effectiveSpellLevel = 1
 			}
+
+			// Apply metamagic effects before getting the updated range
+			applyMetamagicEffects(&spell)
 
 			// Get updated range
 			updatedRange := spell.Range
@@ -906,12 +912,16 @@ func main() {
 			// Format boolean values
 			empowerStr := "No"
 			intensifyStr := "No"
+			extendStr := "No"
 			for _, feat := range spell.MetamagicFeats {
 				if strings.ToLower(feat) == "empower" {
 					empowerStr = "Yes"
 				}
 				if strings.ToLower(feat) == "intensified" {
 					intensifyStr = "Yes"
+				}
+				if strings.ToLower(feat) == "extend" {
+					extendStr = "Yes"
 				}
 			}
 
@@ -967,6 +977,22 @@ func main() {
 					status = "✅"
 				}
 
+				// Calculate total spell level
+				totalLevel := spell.BaseLevel
+				for _, metamagic := range spell.MetamagicFeats {
+					if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
+						totalLevel += effect.LevelIncrease
+					}
+				}
+				// Apply Lorandir's trait if applicable
+				if len(spell.MetamagicMods) > 0 {
+					totalLevel -= 1
+				}
+				// Ensure minimum level of 1
+				if totalLevel < 1 {
+					totalLevel = 1
+				}
+
 				// Add row to table
 				table.Body.Cells = append(table.Body.Cells, []*simpletable.Cell{
 					{Align: simpletable.AlignLeft, Text: status},
@@ -974,9 +1000,12 @@ func main() {
 					{Align: simpletable.AlignLeft, Text: updatedRange},
 					{Align: simpletable.AlignLeft, Text: diceStr},
 					{Align: simpletable.AlignLeft, Text: diceStrPlus2},
+					{Align: simpletable.AlignLeft, Text: fmt.Sprintf("%d", spell.BaseLevel)},
 					{Align: simpletable.AlignLeft, Text: empowerStr},
 					{Align: simpletable.AlignLeft, Text: intensifyStr},
 					{Align: simpletable.AlignLeft, Text: fmt.Sprintf("%d", spell.ReachLevel)},
+					{Align: simpletable.AlignLeft, Text: extendStr},
+					{Align: simpletable.AlignLeft, Text: fmt.Sprintf("%d", totalLevel)},
 				})
 			}
 		}
