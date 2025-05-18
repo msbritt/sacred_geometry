@@ -151,6 +151,7 @@ type Spell struct {
 	Duration       Duration
 	MetamagicFeats []string
 	MetamagicMods  []string // Added for Lorandir's trait handling
+	ReachLevel     int      // Number of Reach metamagic levels applied (0 means no reach)
 }
 
 // PrimeResult represents the result of finding a prime number combination
@@ -302,13 +303,16 @@ var MetamagicEffects = map[string]MetamagicEffect{
 		LevelIncrease: 1,
 		Description:   "Can cast touch spells at close range, close range spells at medium range, and medium range spells at long range",
 		Apply: func(spell *Spell) {
-			switch spell.Range {
-			case "touch":
-				spell.Range = "close"
-			case "close":
-				spell.Range = "medium"
-			case "medium":
-				spell.Range = "long"
+			// Apply reach levels based on the spell's ReachLevel
+			for i := 0; i < spell.ReachLevel; i++ {
+				switch spell.Range {
+				case "touch":
+					spell.Range = "close"
+				case "close":
+					spell.Range = "medium"
+				case "medium":
+					spell.Range = "long"
+				}
 			}
 		},
 	},
@@ -349,6 +353,12 @@ func calculateSpellLevel(spell Spell) int {
 }
 
 func applyMetamagicEffects(spell *Spell) {
+	// Always apply Reach effect if ReachLevel > 0
+	if spell.ReachLevel > 0 {
+		if effect, exists := MetamagicEffects["reach"]; exists {
+			effect.Apply(spell)
+		}
+	}
 	for _, metamagic := range spell.MetamagicFeats {
 		if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
 			effect.Apply(spell)
@@ -607,13 +617,18 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 		if idx, ok := colIdx["intensified"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
 			feats = append(feats, "intensified")
 		}
-		if idx, ok := colIdx["reach"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
-			feats = append(feats, "reach")
-		}
 		if idx, ok := colIdx["extend"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
 			feats = append(feats, "extend")
 		}
 		spell.MetamagicFeats = feats
+
+		// Parse Reach level (new integer-based approach)
+		if idx, ok := colIdx["reach"]; ok && idx < len(record) {
+			reachLevel, err := strconv.Atoi(record[idx])
+			if err == nil {
+				spell.ReachLevel = reachLevel
+			}
+		}
 
 		spells = append(spells, spell)
 	}
@@ -757,6 +772,7 @@ func main() {
 				{Align: simpletable.AlignLeft, Text: fmt.Sprintf("Dice Count: CL=%d", casterLevel+2)},
 				{Align: simpletable.AlignLeft, Text: "Empower"},
 				{Align: simpletable.AlignLeft, Text: "Intensify"},
+				{Align: simpletable.AlignLeft, Text: "Reach"},
 			},
 		}
 
@@ -777,8 +793,12 @@ func main() {
 
 			// Get updated range
 			updatedRange := spell.Range
-			if info, ok := rangeData[spell.Range]; ok {
-				updatedRange = info.Compute(casterLevel)
+			if info, ok := rangeData[strings.Title(strings.ToLower(spell.Range))]; ok {
+				if info.Name == "Touch" || info.Name == "Personal" {
+					updatedRange = info.Name
+				} else {
+					updatedRange = fmt.Sprintf("%s (%s)", info.Name, info.Compute(casterLevel))
+				}
 			}
 
 			// Calculate dice count for current level
@@ -956,6 +976,7 @@ func main() {
 					{Align: simpletable.AlignLeft, Text: diceStrPlus2},
 					{Align: simpletable.AlignLeft, Text: empowerStr},
 					{Align: simpletable.AlignLeft, Text: intensifyStr},
+					{Align: simpletable.AlignLeft, Text: fmt.Sprintf("%d", spell.ReachLevel)},
 				})
 			}
 		}

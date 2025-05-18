@@ -1,10 +1,10 @@
 Name,BaseLevel,School,Range,Damage,Duration,Empower,Intensified,Reach,Extend
-Enlarge Person,1,Transmutation,close,,1 minute/level,No,No,No,Yes
-Mage Armor,1,Conjuration,touch,,1 hour/level,No,No,No,Yes
-Magic Missile,1,Evocation,medium,1d4+1,instantaneous,Yes,No,No,No
-#Shield,1,Abjuration,personal,,1 minute/level,No,No,No,Yes
-Shocking Grasp,1,Evocation,touch,1d6/level(max:5),instantaneous,No,Yes,Yes,No
-Snowball,1,Evocation,close,1d6/level(max:5),instantaneous,No,Yes,No,No
-Bull's Strength,2,Transmutation,touch,,1 minute/level,No,No,No,Yes
-Mirror Image,2,Illusion,personal,,1 minute/level,No,No,No,Yes
-#Fireball,3,Evocation,long,1d6/level(max:10),instantaneous,Yes,Yes,No,No 
+Enlarge Person,1,Transmutation,close,,1 minute/level,No,No,0,Yes
+Mage Armor,1,Conjuration,touch,,1 hour/level,No,No,0,Yes
+Magic Missile,1,Evocation,medium,1d4+1,instantaneous,Yes,No,0,No
+#Shield,1,Abjuration,personal,,1 minute/level,No,No,0,Yes
+Shocking Grasp,1,Evocation,touch,1d6/level(max:5),instantaneous,No,Yes,2,No
+Snowball,1,Evocation,close,1d6/level(max:5),instantaneous,No,Yes,0,No
+Bull's Strength,2,Transmutation,touch,,1 minute/level,No,No,0,Yes
+Mirror Image,2,Illusion,personal,,1 minute/level,No,No,0,Yes
+#Fireball,3,Evocation,long,1d6/level(max:10),instantaneous,Yes,Yes,0,No 

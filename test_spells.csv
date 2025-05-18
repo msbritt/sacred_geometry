@@ -1,7 +1,7 @@
 Name,BaseLevel,School,Range,Damage,Duration,Empower,Intensified,Reach,Extend
-TestFireball,3,Evocation,long,6d6,instantaneous,Yes,Yes,No,No
-TestShield,1,Abjuration,personal,,1 minute/level,No,No,No,Yes
-TestMageArmor,1,Conjuration,touch,,1 hour/level,No,No,No,Yes
-TestMagicMissile,1,Evocation,medium,1d4+1,instantaneous,Yes,No,No,No
-TestShockingGrasp,1,Evocation,touch,1d6/level,instantaneous,Yes,Yes,Yes,No
-TestEnlargePerson,1,Transmutation,close,,1 minute/level,No,No,No,Yes 
+TestFireball,3,Evocation,long,6d6,instantaneous,Yes,Yes,0,No
+TestShield,1,Abjuration,personal,,1 minute/level,No,No,0,Yes
+TestMageArmor,1,Conjuration,touch,,1 hour/level,No,No,0,Yes
+TestMagicMissile,1,Evocation,medium,1d4+1,instantaneous,Yes,No,0,No
+TestShockingGrasp,1,Evocation,touch,1d6/level,instantaneous,Yes,Yes,2,No
+TestEnlargePerson,1,Transmutation,close,,1 minute/level,No,No,0,Yes 
