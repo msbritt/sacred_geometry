@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"math/rand"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/alexeyco/simpletable"
 )
 
 // ANSI color codes for terminal output
@@ -41,7 +44,67 @@ var (
 	casterLevel        = 6
 	engineering        = 6
 	TransmuterOfKorada = true // When true, Transmutation spells get +1 caster level
+	showRanges         = flag.Bool("ranges", false, "Display the computed ranges for the current caster level")
+	verbose            = flag.Bool("verbose", false, "Show detailed output")
+	debug              = flag.Bool("debug", false, "Enable debug mode")
 )
+
+// RangeInfo holds a range's details and a function to compute its actual range.
+type RangeInfo struct {
+	Name        string
+	Description string
+	Compute     func(casterLevel int) string
+}
+
+// Define range data in a structured way
+var rangeData = map[string]RangeInfo{
+	"Touch": {
+		Name:        "Touch",
+		Description: "You must touch a creature or object to affect it.",
+		Compute: func(casterLevel int) string {
+			return "Touch range (no numerical distance)"
+		},
+	},
+	"Close": {
+		Name:        "Close",
+		Description: "Spell reaches as far as 25 feet, plus an additional 5 feet for every 2 full caster levels.",
+		Compute: func(casterLevel int) string {
+			bonus := (casterLevel / 2) * 5
+			total := 25 + bonus
+			return fmt.Sprintf("%d feet (Base: 25 ft + Bonus: %d ft)", total, bonus)
+		},
+	},
+	"Medium": {
+		Name:        "Medium",
+		Description: "Spell reaches as far as 100 feet plus 10 feet per caster level.",
+		Compute: func(casterLevel int) string {
+			total := 100 + 10*casterLevel
+			return fmt.Sprintf("%d feet (Base: 100 ft + %d ft from caster level)", total, 10*casterLevel)
+		},
+	},
+	"Long": {
+		Name:        "Long",
+		Description: "Spell reaches as far as 400 feet plus 40 feet per caster level.",
+		Compute: func(casterLevel int) string {
+			total := 400 + 40*casterLevel
+			return fmt.Sprintf("%d feet (Base: 400 ft + %d ft from caster level)", total, 40*casterLevel)
+		},
+	},
+	"Unlimited": {
+		Name:        "Unlimited",
+		Description: "Spell reaches anywhere on the same plane of existence.",
+		Compute: func(casterLevel int) string {
+			return "Unlimited range"
+		},
+	},
+	"Personal": {
+		Name:        "Personal",
+		Description: "Spell affects only the caster.",
+		Compute: func(casterLevel int) string {
+			return "Personal (self only)"
+		},
+	},
+}
 
 type SpellRange struct {
 	Type     string
@@ -87,6 +150,14 @@ type Spell struct {
 	DamageRoll     DamageRoll
 	Duration       Duration
 	MetamagicFeats []string
+	MetamagicMods  []string // Added for Lorandir's trait handling
+}
+
+// PrimeResult represents the result of finding a prime number combination
+type PrimeResult struct {
+	Prime      int
+	Expression string
+	Found      bool
 }
 
 func rollDice(n int) []int {
@@ -498,10 +569,16 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 	reader := csv.NewReader(commentFilterReader)
 	var spells []Spell
 
-	// Skip header row
-	_, err = reader.Read()
+	// Read header row
+	header, err := reader.Read()
 	if err != nil {
 		return nil, fmt.Errorf("error reading header: %v", err)
+	}
+
+	// Find column indices
+	colIdx := map[string]int{}
+	for i, col := range header {
+		colIdx[strings.ToLower(col)] = i
 	}
 
 	for {
@@ -514,21 +591,29 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 		}
 
 		spell := Spell{
-			Name:       record[0],
-			BaseLevel:  mustAtoi(record[1]),
-			School:     record[2],
-			Range:      record[3],
-			DamageRoll: parseDamage(record[4], record[0]),
-			Duration:   parseDuration(record[5]),
+			Name:       record[colIdx["name"]],
+			BaseLevel:  mustAtoi(record[colIdx["baselevel"]]),
+			School:     record[colIdx["school"]],
+			Range:      record[colIdx["range"]],
+			DamageRoll: parseDamage(record[colIdx["damage"]], record[colIdx["name"]]),
+			Duration:   parseDuration(record[colIdx["duration"]]),
 		}
 
-		// Parse metamagic feats if present (now in column 6)
-		if len(record) > 6 && record[6] != "" {
-			spell.MetamagicFeats = strings.Split(record[6], ";")
-			if debugMode {
-				fmt.Printf("Debug: Loaded metamagic feats for %s: %v\n", spell.Name, spell.MetamagicFeats)
-			}
+		// Parse new boolean metamagic columns
+		var feats []string
+		if idx, ok := colIdx["empower"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
+			feats = append(feats, "empower")
 		}
+		if idx, ok := colIdx["intensified"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
+			feats = append(feats, "intensified")
+		}
+		if idx, ok := colIdx["reach"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
+			feats = append(feats, "reach")
+		}
+		if idx, ok := colIdx["extend"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
+			feats = append(feats, "extend")
+		}
+		spell.MetamagicFeats = feats
 
 		spells = append(spells, spell)
 	}
@@ -539,203 +624,379 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 var debugMode bool
 var verboseMode bool
 
-func main() {
-	// Check for debug and verbose flags
-	for _, arg := range os.Args[1:] {
-		switch arg {
-		case "--debug":
-			debugMode = true
-		case "--verbose":
-			verboseMode = true
+// formatTableOutput formats the spell information in a table format
+func formatTableOutput(spell Spell, success bool, updatedRange string, diceCount int) string {
+	// Check for metamagic feats
+	hasEmpower := false
+	hasIntensify := false
+	for _, feat := range spell.MetamagicFeats {
+		if strings.ToLower(feat) == "empower" {
+			hasEmpower = true
+		}
+		if strings.ToLower(feat) == "intensified" {
+			hasIntensify = true
 		}
 	}
 
-	// Read spells from spells.csv
-	spells, err := readSpellsFromCSV("spells.csv")
-	if err != nil {
-		fmt.Printf("Error reading spells.csv: %v\n", err)
+	// Calculate the number of dice to be rolled based on the CSV value, caster level, and metamagic
+	diceToRoll := diceCount
+	if spell.DamageRoll.PerLevel {
+		diceToRoll = spell.DamageRoll.NumDice * casterLevel
+		if spell.DamageRoll.MaxDice > 0 && diceToRoll > spell.DamageRoll.MaxDice {
+			diceToRoll = spell.DamageRoll.MaxDice
+		}
+		if hasIntensify {
+			diceToRoll += 5
+			if diceToRoll > casterLevel {
+				diceToRoll = casterLevel
+			}
+		}
+	}
+
+	// If Empower is applied, multiply the dice count by 1.5
+	if hasEmpower {
+		diceToRoll = int(float64(diceToRoll) * 1.5)
+	}
+
+	// Format the dice count with die type and empower notation if applicable
+	var diceStr string
+	if diceToRoll > 0 {
+		diceStr = fmt.Sprintf("%dd%d", diceToRoll, spell.DamageRoll.DiceType)
+		if hasEmpower {
+			diceStr += " (×1.5)"
+		}
+	}
+
+	// Format boolean values as Yes/No
+	empowerStr := "No"
+	if hasEmpower {
+		empowerStr = "Yes"
+	}
+	intensifyStr := "No"
+	if hasIntensify {
+		intensifyStr = "Yes"
+	}
+
+	return fmt.Sprintf("%-7s | %-20s | %-25s | %-15s | %-8s | %-10s",
+		empowerStr,
+		spell.Name,
+		updatedRange,
+		diceStr,
+		intensifyStr,
+		empowerStr)
+}
+
+func main() {
+	flag.Parse()
+
+	// If the ranges flag is set, display range information and exit
+	if *showRanges {
+		displayRangeInfo(casterLevel)
 		return
 	}
 
-	// Process each spell
-	for _, spell := range spells {
-		spellCopy := spell // Create a copy to modify
-		if debugMode {
-			fmt.Printf("Debug: Initial copy - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
-		}
-
-		spellLevel := calculateSpellLevel(spellCopy)
-		if spellLevel > maxSpellLevel {
-			fmt.Printf("Spell %s with metamagic exceeds maximum spell level (%d)\n", spellCopy.Name, maxSpellLevel)
-			continue
-		}
-
-		// Use the global caster level instead of setting it to the spell level
-		// casterLevel = spellLevel  // This line is commented out
-
-		// Apply Transmuter of Korada bonus if applicable
-		spellCasterLevel := casterLevel // Use a local variable for this spell's caster level
-		if TransmuterOfKorada && strings.ToLower(spell.School) == "transmutation" {
-			spellCasterLevel += 1
-			if debugMode {
-				fmt.Printf("Debug: Applied Transmuter of Korada bonus (+1 caster level) to %s\n", spell.Name)
-			}
-		}
-
-		// Initialize range calculator
-		ranges := NewRangeCalculator(spellCasterLevel)
-
-		// Build metamagic string with level increases
-		var metamagicParts []string
-		for _, feat := range spell.MetamagicFeats {
-			if effect, exists := MetamagicEffects[strings.ToLower(feat)]; exists {
-				metamagicParts = append(metamagicParts, fmt.Sprintf("%s: +%d", feat, effect.LevelIncrease))
-			}
-		}
-
-		metamagicStr := fmt.Sprintf("Base Level %d", spell.BaseLevel)
-		if len(metamagicParts) > 0 {
-			metamagicStr += fmt.Sprintf("; metamagic adjustments — %s; Final Spell Level: %d",
-				strings.Join(metamagicParts, ", "), spellLevel)
-		}
-
-		// Add Transmuter of Korada information if applicable
-		if TransmuterOfKorada && strings.ToLower(spell.School) == "transmutation" {
-			metamagicStr += fmt.Sprintf("; Transmuter of Korada: +1 caster level (CL %d)", spellCasterLevel)
-		}
-
-		fmt.Printf("\nCalculating %s: %s\n", spellCopy.Name, metamagicStr)
-
-		if debugMode {
-			fmt.Printf("Debug: Before applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
-		}
-		applyMetamagicEffects(&spellCopy)
-		if debugMode {
-			fmt.Printf("Debug: After applyMetamagicEffects - MaxDice: %d\n", spellCopy.DamageRoll.MaxDice)
-		}
-
-		primes := getPrimeConstants(spellLevel)
-		dice := rollDice(engineering)
-
-		fmt.Printf("Prime constants for modified spell level %d: %v\n", spellLevel, primes)
-		fmt.Printf("Rolling %d d6 dice: %v\n", engineering, dice)
-
-		// Use existing concurrent prime calculation logic
-		var wg sync.WaitGroup
-		resultChan := make(chan Result, len(primes))
-
-		for _, prime := range primes {
-			wg.Add(1)
-			go func(p int) {
-				defer wg.Done()
-				expr, found := findCombinationToPrime(dice, p)
-				resultChan <- Result{Prime: p, Expression: expr, Found: found}
-			}(prime)
-		}
-
-		wg.Wait()
-		close(resultChan)
-
-		success := true
-		var expressions []Result
-		for result := range resultChan {
-			if !result.Found {
-				success = false
-				break
-			}
-			expressions = append(expressions, result)
-		}
-
-		if success {
-			fmt.Printf("\n%sSuccess:%s Sacred Geometry succeeded for %s!\n", colorGreen, colorReset, spellCopy.Name)
-
-			// Display the mathematical expressions for each prime only in verbose mode
-			if verboseMode {
-				fmt.Printf("\nPrime number calculations:\n")
-				for _, result := range expressions {
-					fmt.Printf("- %d = %s\n", result.Prime, result.Expression)
-				}
-			}
-
-			// Display metamagic effects
-			for _, metamagic := range spellCopy.MetamagicFeats {
-				if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
-					fmt.Printf("- %s: %s\n", metamagic, effect.Description)
-				}
-			}
-
-			// Display range
-			switch spellCopy.Range {
-			case "touch":
-				fmt.Printf("Range: Touch\n")
-			case "close":
-				fmt.Printf("Range: %d ft\n", ranges.Close.Distance)
-			case "medium":
-				fmt.Printf("Range: %d ft\n", ranges.Medium.Distance)
-			case "long":
-				fmt.Printf("Range: %d ft\n", ranges.Long.Distance)
-			}
-
-			// Display damage with all modifications
-			if spellCopy.DamageRoll.NumDice > 0 {
-				baseDamage := formatDamage(spell.DamageRoll, spellCasterLevel, spell.Name)
-
-				// Special handling for Magic Missile display
-				if spell.Name == "Magic Missile" {
-					// Calculate number of missiles based on caster level
-					projectiles := 1 + (spellCasterLevel-1)/2
-					if projectiles > 5 {
-						projectiles = 5 // Maximum of 5 missiles
-					}
-					fmt.Printf("Base Damage: %s\n", baseDamage)
-					fmt.Printf("Number of Missiles: %d (1 at level 1, +1 per 2 levels, max 5)\n", projectiles)
-				} else if spell.DamageRoll.PerLevel {
-					actualDice := spell.DamageRoll.NumDice * spellCasterLevel
-					if actualDice > spell.DamageRoll.MaxDice {
-						actualDice = spell.DamageRoll.MaxDice
-					}
-					fmt.Printf("Base Damage: %s (%dd%d, max %d dice)\n",
-						baseDamage, actualDice, spell.DamageRoll.DiceType, spell.DamageRoll.MaxDice)
-				} else {
-					fmt.Printf("Base Damage: %s\n", baseDamage)
-				}
-
-				// Show Intensified damage if present
-				for _, metamagic := range spellCopy.MetamagicFeats {
-					if strings.ToLower(metamagic) == "intensified" {
-						// Calculate actual dice after intensified
-						intensifiedDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel, spell.Name)
-						actualDice := spellCopy.DamageRoll.NumDice * spellCasterLevel
-						if spellCopy.DamageRoll.PerLevel && actualDice > spellCopy.DamageRoll.MaxDice {
-							actualDice = spellCopy.DamageRoll.MaxDice
-						}
-						fmt.Printf("Intensified Damage: %s (%d dice, max dice increased to %d)\n",
-							intensifiedDamage, actualDice, spellCopy.DamageRoll.MaxDice)
-						break
-					}
-				}
-
-				// Show Empowered damage if present
-				for _, metamagic := range spellCopy.MetamagicFeats {
-					if strings.ToLower(metamagic) == "empower" {
-						empoweredDamage := formatDamage(spellCopy.DamageRoll, spellCasterLevel, spell.Name)
-
-						// Special handling for Magic Missile with Empower
-						if spell.Name == "Magic Missile" {
-							fmt.Printf("Empowered Damage: %s (damage ×1.5)\n", empoweredDamage)
-						} else {
-							fmt.Printf("Empowered Damage: %s (×1.5)\n", empoweredDamage)
-						}
-						break
-					}
-				}
-			}
-
-			if spellCopy.Duration.Value > 0 {
-				fmt.Printf("Duration: %s\n", formatDuration(spellCopy.Duration, spellCasterLevel))
-			}
-		} else {
-			fmt.Printf("\n%sFailure:%s Sacred Geometry failed for %s\n", colorRed, colorReset, spellCopy.Name)
+	// Read spells from CSV file
+	spells, err := readSpellsFromCSV("spells.csv")
+	if err != nil {
+		fmt.Printf("Error reading spells.csv: %v\n", err)
+		fmt.Println("Using default spell list...")
+		// Use default spell list if CSV reading fails
+		spells = []Spell{
+			{
+				Name:          "Bull's Strength",
+				Duration:      Duration{Value: 1, Unit: "minute", IsLevel: true},
+				Range:         "Touch",
+				BaseLevel:     2,
+				MetamagicMods: []string{},
+			},
+			{
+				Name:          "Enlarge Person",
+				Duration:      Duration{Value: 1, Unit: "minute", IsLevel: true},
+				Range:         "Close",
+				BaseLevel:     1,
+				MetamagicMods: []string{},
+			},
+			{
+				Name:          "Mage Armor",
+				Duration:      Duration{Value: 1, Unit: "hour", IsLevel: true},
+				Range:         "Touch",
+				BaseLevel:     1,
+				MetamagicMods: []string{},
+			},
+			{
+				Name:          "Shocking Grasp",
+				Duration:      Duration{Value: 0, Unit: "instantaneous", IsLevel: false},
+				Range:         "Touch",
+				BaseLevel:     1,
+				MetamagicMods: []string{"Metamagic"},
+			},
+			{
+				Name:          "Mirror Image",
+				Duration:      Duration{Value: 1, Unit: "minute", IsLevel: true},
+				Range:         "Personal",
+				BaseLevel:     2,
+				MetamagicMods: []string{},
+			},
 		}
 	}
+
+	// Process each spell
+	fmt.Printf("Caster Level: %d\nEngineering: %d\n\n", casterLevel, engineering)
+
+	if !*verbose {
+		// Create a new table
+		table := simpletable.New()
+
+		// Set table header
+		table.Header = &simpletable.Header{
+			Cells: []*simpletable.Cell{
+				{Align: simpletable.AlignLeft, Text: "Status"},
+				{Align: simpletable.AlignLeft, Text: "Spell Name"},
+				{Align: simpletable.AlignLeft, Text: "Updated Range"},
+				{Align: simpletable.AlignLeft, Text: fmt.Sprintf("Dice Count: CL=%d", casterLevel)},
+				{Align: simpletable.AlignLeft, Text: fmt.Sprintf("Dice Count: CL=%d", casterLevel+2)},
+				{Align: simpletable.AlignLeft, Text: "Empower"},
+				{Align: simpletable.AlignLeft, Text: "Intensify"},
+			},
+		}
+
+		for _, spell := range spells {
+			// Calculate effective spell level considering Lorandir's trait
+			effectiveSpellLevel := spell.BaseLevel
+			if len(spell.MetamagicMods) > 0 {
+				effectiveSpellLevel = spell.BaseLevel - 1
+				if *verbose {
+					fmt.Printf("  Metamagic applied - Lorandir's trait reduces spell level by 1 (from %d to %d)\n",
+						spell.BaseLevel, effectiveSpellLevel)
+				}
+			}
+			// Ensure effectiveSpellLevel is at least 1
+			if effectiveSpellLevel < 1 {
+				effectiveSpellLevel = 1
+			}
+
+			// Get updated range
+			updatedRange := spell.Range
+			if info, ok := rangeData[spell.Range]; ok {
+				updatedRange = info.Compute(casterLevel)
+			}
+
+			// Calculate dice count for current level
+			diceCount := 0
+			if spell.DamageRoll.NumDice > 0 {
+				diceCount = spell.DamageRoll.NumDice
+				if spell.DamageRoll.PerLevel {
+					diceCount *= casterLevel
+					if spell.DamageRoll.MaxDice > 0 && diceCount > spell.DamageRoll.MaxDice {
+						diceCount = spell.DamageRoll.MaxDice
+					}
+				}
+				// Apply Intensify if present
+				for _, feat := range spell.MetamagicFeats {
+					if strings.ToLower(feat) == "intensified" {
+						diceCount += 5
+						if diceCount > casterLevel {
+							diceCount = casterLevel
+						}
+					}
+				}
+			}
+
+			// Calculate dice count for caster level + 2
+			diceCountPlus2 := 0
+			if spell.DamageRoll.NumDice > 0 {
+				diceCountPlus2 = spell.DamageRoll.NumDice
+				if spell.DamageRoll.PerLevel {
+					diceCountPlus2 *= (casterLevel + 2)
+					if spell.DamageRoll.MaxDice > 0 && diceCountPlus2 > spell.DamageRoll.MaxDice {
+						diceCountPlus2 = spell.DamageRoll.MaxDice
+					}
+				}
+				// Apply Intensify if present
+				for _, feat := range spell.MetamagicFeats {
+					if strings.ToLower(feat) == "intensified" {
+						diceCountPlus2 += 5
+						if diceCountPlus2 > (casterLevel + 2) {
+							diceCountPlus2 = (casterLevel + 2)
+						}
+					}
+				}
+			}
+
+			// Format dice count for current level
+			var diceStr string
+			if diceCount > 0 {
+				if spell.Name == "Magic Missile" {
+					// Calculate number of missiles based on caster level
+					// 1 at level 1, +1 for every 2 levels after that, max 5
+					missiles := 1 + (casterLevel-1)/2
+					if missiles > 5 {
+						missiles = 5
+					}
+					// Multiply both dice and modifier by number of missiles
+					totalDice := spell.DamageRoll.NumDice * missiles
+					totalMod := spell.DamageRoll.Modifier * missiles
+					if totalMod > 0 {
+						diceStr = fmt.Sprintf("%dd%d + %d (%d missiles)", totalDice, spell.DamageRoll.DiceType, totalMod, missiles)
+					} else {
+						diceStr = fmt.Sprintf("%dd%d (%d missiles)", totalDice, spell.DamageRoll.DiceType, missiles)
+					}
+				} else {
+					diceStr = fmt.Sprintf("%dd%d", diceCount, spell.DamageRoll.DiceType)
+				}
+				// Check for Empower metamagic
+				for _, feat := range spell.MetamagicFeats {
+					if strings.ToLower(feat) == "empower" {
+						diceStr += " (×1.5)"
+						break
+					}
+				}
+			}
+
+			// Format dice count for caster level + 2
+			var diceStrPlus2 string
+			if diceCountPlus2 > 0 {
+				if spell.Name == "Magic Missile" {
+					// Calculate number of missiles based on caster level + 2
+					// 1 at level 1, +1 for every 2 levels after that, max 5
+					missiles := 1 + ((casterLevel+2)-1)/2
+					if missiles > 5 {
+						missiles = 5
+					}
+					// Multiply both dice and modifier by number of missiles
+					totalDice := spell.DamageRoll.NumDice * missiles
+					totalMod := spell.DamageRoll.Modifier * missiles
+					if totalMod > 0 {
+						diceStrPlus2 = fmt.Sprintf("%dd%d + %d (%d missiles)", totalDice, spell.DamageRoll.DiceType, totalMod, missiles)
+					} else {
+						diceStrPlus2 = fmt.Sprintf("%dd%d (%d missiles)", totalDice, spell.DamageRoll.DiceType, missiles)
+					}
+				} else {
+					diceStrPlus2 = fmt.Sprintf("%dd%d", diceCountPlus2, spell.DamageRoll.DiceType)
+				}
+				// Check for Empower metamagic
+				for _, feat := range spell.MetamagicFeats {
+					if strings.ToLower(feat) == "empower" {
+						diceStrPlus2 += " (×1.5)"
+						break
+					}
+				}
+			}
+
+			// Format boolean values
+			empowerStr := "No"
+			intensifyStr := "No"
+			for _, feat := range spell.MetamagicFeats {
+				if strings.ToLower(feat) == "empower" {
+					empowerStr = "Yes"
+				}
+				if strings.ToLower(feat) == "intensified" {
+					intensifyStr = "Yes"
+				}
+			}
+
+			// Calculate Sacred Geometry
+			primes := getPrimeConstants(effectiveSpellLevel)
+			dice := rollDice(engineering)
+			if *verbose {
+				fmt.Printf("  Rolling %d d6: %v\n", engineering, dice)
+			}
+
+			var wg sync.WaitGroup
+			results := make(chan PrimeResult, len(primes))
+
+			for _, prime := range primes {
+				wg.Add(1)
+				go func(p int) {
+					defer wg.Done()
+					expr, found := findCombinationToPrime(dice, p)
+					results <- PrimeResult{Prime: p, Expression: expr, Found: found}
+				}(prime)
+			}
+
+			go func() {
+				wg.Wait()
+				close(results)
+			}()
+
+			success := true
+			for result := range results {
+				if result.Found {
+					if *verbose {
+						fmt.Printf("  %sPrime %d: %s%s\n", colorGreen, result.Prime, result.Expression, colorReset)
+					}
+				} else {
+					if *verbose {
+						fmt.Printf("  %sPrime %d: Not found%s\n", colorRed, result.Prime, colorReset)
+					}
+					success = false
+				}
+			}
+
+			if *verbose {
+				if success {
+					fmt.Printf("  %sSuccess! You can cast the spell at its original level.%s\n", colorGreen, colorReset)
+				} else {
+					fmt.Printf("  %sFailed to find all required prime numbers.%s\n", colorRed, colorReset)
+				}
+				fmt.Println("-------------------------")
+			} else {
+				// Format status
+				status := "❌"
+				if success {
+					status = "✅"
+				}
+
+				// Add row to table
+				table.Body.Cells = append(table.Body.Cells, []*simpletable.Cell{
+					{Align: simpletable.AlignLeft, Text: status},
+					{Align: simpletable.AlignLeft, Text: spell.Name},
+					{Align: simpletable.AlignLeft, Text: updatedRange},
+					{Align: simpletable.AlignLeft, Text: diceStr},
+					{Align: simpletable.AlignLeft, Text: diceStrPlus2},
+					{Align: simpletable.AlignLeft, Text: empowerStr},
+					{Align: simpletable.AlignLeft, Text: intensifyStr},
+				})
+			}
+		}
+
+		if !*verbose {
+			// Set table style
+			table.SetStyle(simpletable.StyleCompactLite)
+			// Print column widths for debugging
+			fmt.Printf("\nColumn widths:\n")
+			for i, cell := range table.Header.Cells {
+				fmt.Printf("Column %d (%s): %d\n", i, cell.Text, len(cell.Text))
+			}
+			fmt.Println(table.String())
+		}
+	}
+}
+
+// displayRangeInfo shows detailed information about spell ranges
+func displayRangeInfo(casterLevel int) {
+	fmt.Printf("Computed Range Details (Caster Level: %d):\n", casterLevel)
+	for _, info := range rangeData {
+		computed := info.Compute(casterLevel)
+		fmt.Printf("\n%s:\n  %s\n  Computed Range: %s\n", info.Name, info.Description, computed)
+	}
+}
+
+// computeDuration converts a duration in the form "X unit/level" into a computed value
+func computeDuration(durationStr string, casterLevel int) string {
+	if strings.Contains(durationStr, "/level") {
+		parts := strings.Split(durationStr, " ")
+		if len(parts) >= 2 {
+			baseValue, err := strconv.Atoi(parts[0])
+			if err == nil {
+				unit := strings.TrimSuffix(parts[1], "/level")
+				total := baseValue * casterLevel
+				if total != 1 && !strings.HasSuffix(unit, "s") {
+					unit += "s"
+				}
+				return fmt.Sprintf("%d %s", total, unit)
+			}
+		}
+	}
+	return durationStr
 }
