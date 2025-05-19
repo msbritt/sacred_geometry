@@ -343,11 +343,15 @@ var MetamagicEffects = map[string]MetamagicEffect{
 func calculateSpellLevel(spell Spell) int {
 	level := spell.BaseLevel
 
+	// Add level increases from metamagic feats
 	for _, metamagic := range spell.MetamagicFeats {
 		if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
 			level += effect.LevelIncrease
 		}
 	}
+
+	// Add level increases from Reach
+	level += spell.ReachLevel
 
 	return level
 }
@@ -978,12 +982,7 @@ func main() {
 				}
 
 				// Calculate total spell level
-				totalLevel := spell.BaseLevel
-				for _, metamagic := range spell.MetamagicFeats {
-					if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
-						totalLevel += effect.LevelIncrease
-					}
-				}
+				totalLevel := calculateSpellLevel(spell)
 				// Apply Lorandir's trait if applicable
 				if len(spell.MetamagicMods) > 0 {
 					totalLevel -= 1

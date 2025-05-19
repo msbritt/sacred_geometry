@@ -280,16 +280,16 @@ func TestApplyMetamagicEffects(t *testing.T) {
 		{
 			"Reach Test",
 			Spell{
-				Name:           "Shocking Grasp",
-				BaseLevel:      1,
-				Range:          "touch",
-				MetamagicFeats: []string{"reach"},
+				Name:       "Shocking Grasp",
+				BaseLevel:  1,
+				Range:      "touch",
+				ReachLevel: 1,
 			},
 			Spell{
-				Name:           "Shocking Grasp",
-				BaseLevel:      1,
-				Range:          "close",
-				MetamagicFeats: []string{"reach"},
+				Name:       "Shocking Grasp",
+				BaseLevel:  1,
+				Range:      "close",
+				ReachLevel: 1,
 			},
 		},
 		{
