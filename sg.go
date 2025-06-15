@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,6 +49,9 @@ var (
 	verbose            = flag.Bool("verbose", false, "Show detailed output")
 	debug              = flag.Bool("debug", false, "Enable debug mode")
 	showMetamagic      = flag.Bool("m", false, "Display metamagic descriptions")
+
+	// New: Caster's max spell level (can be set per character)
+	casterMaxSpellLevel = 3
 )
 
 // RangeInfo holds a range's details and a function to compute its actual range.
@@ -356,34 +360,61 @@ var MetamagicEffects = map[string]MetamagicEffect{
 	},
 }
 
-func calculateSpellLevel(spell Spell) int {
+func calculateSpellLevel(spell Spell) (int, error) {
 	level := spell.BaseLevel
+	totalIncrease := 0
 
-	// Add level increases from metamagic feats
+	// First calculate total level increase from all metamagic feats
 	for _, metamagic := range spell.MetamagicFeats {
 		if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
-			level += effect.LevelIncrease
+			totalIncrease += effect.LevelIncrease
 		}
 	}
 
-	// Add level increases from Reach
-	level += spell.ReachLevel
+	// Add Reach level to total increase
+	totalIncrease += spell.ReachLevel
 
-	return level
+	// Check if total level would exceed caster's max
+	if level + totalIncrease > casterMaxSpellLevel {
+		return 0, fmt.Errorf("spell '%s' cannot use these metamagic feats: would exceed your maximum spell level of %d (base: %d, total increase: %d)", 
+			spell.Name, casterMaxSpellLevel, level, totalIncrease)
+	}
+
+	// If we get here, it's safe to apply all increases
+	level += totalIncrease
+
+	return level, nil
 }
 
-func applyMetamagicEffects(spell *Spell) {
-	// Always apply Reach effect if ReachLevel > 0
+func applyMetamagicEffects(spell *Spell) error {
+	// Calculate current level before applying effects
+	currentLevel := spell.BaseLevel
+
+	// Always apply Reach effect if ReachLevel > 0 and it wouldn't exceed caster's max
 	if spell.ReachLevel > 0 {
+		if currentLevel + spell.ReachLevel > casterMaxSpellLevel {
+			return fmt.Errorf("spell '%s' cannot use %d levels of Reach metamagic: would exceed your maximum spell level of %d (current: %d, increase: %d)", 
+				spell.Name, spell.ReachLevel, casterMaxSpellLevel, currentLevel, spell.ReachLevel)
+		}
 		if effect, exists := MetamagicEffects["reach"]; exists {
 			effect.Apply(spell)
 		}
+		currentLevel += spell.ReachLevel
 	}
+
+	// Apply other metamagic effects only if they wouldn't exceed caster's max
 	for _, metamagic := range spell.MetamagicFeats {
 		if effect, exists := MetamagicEffects[strings.ToLower(metamagic)]; exists {
+			if currentLevel + effect.LevelIncrease > casterMaxSpellLevel {
+				return fmt.Errorf("spell '%s' cannot use metamagic feat '%s': would exceed your maximum spell level of %d (current: %d, increase: %d)", 
+					spell.Name, metamagic, casterMaxSpellLevel, currentLevel, effect.LevelIncrease)
+			}
 			effect.Apply(spell)
+			currentLevel += effect.LevelIncrease
 		}
 	}
+
+	return nil
 }
 
 // Helper function to format duration
@@ -755,9 +786,32 @@ func formatTableOutput(spell Spell, success bool, updatedRange string, diceCount
 func main() {
 	flag.Parse()
 
+	// Print caster's max spell level, caster level, and engineering
+	fmt.Printf("Caster's Max Spell Level: %d\n", casterMaxSpellLevel)
+	fmt.Printf("Caster Level: %d\n", casterLevel)
+	fmt.Printf("Engineering: %d\n", engineering)
+
 	// If the ranges flag is set, display range information and exit
 	if *showRanges {
 		displayRangeInfo(casterLevel)
+		return
+	}
+
+	// If the metamagic flag is set, display metamagic descriptions and exit
+	if *showMetamagic {
+		fmt.Println("Metamagic Feats:")
+		// Create a slice to hold the keys for sorting
+		var keys []string
+		for name := range MetamagicEffects {
+			keys = append(keys, name)
+		}
+		// Sort the keys alphabetically
+		sort.Strings(keys)
+		// Print the metamagic feats in alphabetical order
+		for _, name := range keys {
+			effect := MetamagicEffects[name]
+			fmt.Printf("  %s (+%d): %s\n", name, effect.LevelIncrease, effect.Description)
+		}
 		return
 	}
 
@@ -782,9 +836,13 @@ func main() {
 		}
 
 		// Test level calculation
-		level := calculateSpellLevel(testSpell)
-		fmt.Printf("Magic Missile with Toppling: Level %d (Base: %d + Toppling: +1)\n", 
-			level, testSpell.BaseLevel)
+		level, err := calculateSpellLevel(testSpell)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		} else {
+			fmt.Printf("Magic Missile with Toppling: Level %d (Base: %d + Toppling: +1)\n", 
+				level, testSpell.BaseLevel)
+		}
 
 		// Test trip attempt functionality
 		fmt.Println("Toppling allows Magic Missile to make trip attempts when it hits")
@@ -798,46 +856,8 @@ func main() {
 	// Read spells from CSV file
 	spells, err := readSpellsFromCSV("spells.csv")
 	if err != nil {
-		fmt.Printf("Error reading spells.csv: %v\n", err)
-		fmt.Println("Using default spell list...")
-		// Use default spell list if CSV reading fails
-		spells = []Spell{
-			{
-				Name:          "Bull's Strength",
-				Duration:      Duration{Value: 1, Unit: "minute", IsLevel: true},
-				Range:         "Touch",
-				BaseLevel:     2,
-				MetamagicMods: []string{},
-			},
-			{
-				Name:          "Enlarge Person",
-				Duration:      Duration{Value: 1, Unit: "minute", IsLevel: true},
-				Range:         "Close",
-				BaseLevel:     1,
-				MetamagicMods: []string{},
-			},
-			{
-				Name:          "Mage Armor",
-				Duration:      Duration{Value: 1, Unit: "hour", IsLevel: true},
-				Range:         "Touch",
-				BaseLevel:     1,
-				MetamagicMods: []string{},
-			},
-			{
-				Name:          "Shocking Grasp",
-				Duration:      Duration{Value: 0, Unit: "instantaneous", IsLevel: false},
-				Range:         "Touch",
-				BaseLevel:     1,
-				MetamagicMods: []string{"Metamagic"},
-			},
-			{
-				Name:          "Mirror Image",
-				Duration:      Duration{Value: 1, Unit: "minute", IsLevel: true},
-				Range:         "Personal",
-				BaseLevel:     2,
-				MetamagicMods: []string{},
-			},
-		}
+		fmt.Printf("❌ Error: %v\n", err)
+		return
 	}
 
 	// Process each spell
@@ -868,6 +888,13 @@ func main() {
 		}
 
 		for _, spell := range spells {
+			// Check spell level first
+			totalLevel, err := calculateSpellLevel(spell)
+			if err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				continue
+			}
+
 			// Calculate effective spell level considering Lorandir's trait
 			effectiveSpellLevel := spell.BaseLevel
 			if len(spell.MetamagicMods) > 0 {
@@ -883,7 +910,10 @@ func main() {
 			}
 
 			// Apply metamagic effects before getting the updated range
-			applyMetamagicEffects(&spell)
+			if err := applyMetamagicEffects(&spell); err != nil {
+				fmt.Printf("❌ Error: %v\n", err)
+				continue
+			}
 
 			// Get updated range
 			updatedRange := spell.Range
@@ -1071,17 +1101,6 @@ func main() {
 				status := "❌"
 				if success {
 					status = "✅"
-				}
-
-				// Calculate total spell level
-				totalLevel := calculateSpellLevel(spell)
-				// Apply Lorandir's trait if applicable
-				if len(spell.MetamagicMods) > 0 {
-					totalLevel -= 1
-				}
-				// Ensure minimum level of 1
-				if totalLevel < 1 {
-					totalLevel = 1
 				}
 
 				// Add row to table

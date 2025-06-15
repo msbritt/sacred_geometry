@@ -83,33 +83,57 @@ func TestRangeCalculator(t *testing.T) {
 
 // TestCalculateSpellLevel tests the spell level calculation with metamagic
 func TestCalculateSpellLevel(t *testing.T) {
+	// Set the caster's max spell level for this test
+	casterMaxSpellLevel = 3
+
 	tests := []struct {
 		spell         Spell
 		expectedLevel int
+		expectError   bool
 	}{
 		{
 			Spell{Name: "Fireball", BaseLevel: 3, MetamagicFeats: []string{}},
-			3,
+			3,    // base 3, no metamagic, allowed
+			false,
 		},
 		{
 			Spell{Name: "Fireball", BaseLevel: 3, MetamagicFeats: []string{"empower"}},
-			5, // +2 for empower
+			0,    // base 3 + empower 2 = 5, exceeds cap, should error
+			true,
 		},
 		{
 			Spell{Name: "Magic Missile", BaseLevel: 1, MetamagicFeats: []string{"extend", "empower"}},
-			4, // +1 for extend, +2 for empower
+			0,    // base 1 + extend 1 + empower 2 = 4, exceeds cap, should error
+			true,
 		},
 		{
 			Spell{Name: "Shocking Grasp", BaseLevel: 1, MetamagicFeats: []string{"reach", "empower", "intensified"}},
-			5, // +1 for reach, +2 for empower, +1 for intensified
+			0,    // base 1 + reach 1 + empower 2 + intensified 1 = 5, exceeds cap, should error
+			true,
+		},
+		{
+			Spell{Name: "Magic Missile", BaseLevel: 1, MetamagicFeats: []string{"empower", "toppling"}},
+			0,    // base 1 + empower 2 + toppling 1 = 4, exceeds cap, should error
+			true,
 		},
 	}
 
 	for _, test := range tests {
-		result := calculateSpellLevel(test.spell)
-		if result != test.expectedLevel {
-			t.Errorf("calculateSpellLevel(%s with %v) = %d, expected %d",
-				test.spell.Name, test.spell.MetamagicFeats, result, test.expectedLevel)
+		level, err := calculateSpellLevel(test.spell)
+		if test.expectError {
+			if err == nil {
+				t.Errorf("calculateSpellLevel(%s with %v) expected error but got none",
+					test.spell.Name, test.spell.MetamagicFeats)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("calculateSpellLevel(%s with %v) got unexpected error: %v",
+					test.spell.Name, test.spell.MetamagicFeats, err)
+			}
+			if level != test.expectedLevel {
+				t.Errorf("calculateSpellLevel(%s with %v) = %d, expected %d",
+					test.spell.Name, test.spell.MetamagicFeats, level, test.expectedLevel)
+			}
 		}
 	}
 }
