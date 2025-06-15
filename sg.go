@@ -861,8 +861,6 @@ func main() {
 	}
 
 	// Process each spell
-	fmt.Printf("Caster Level: %d\nEngineering: %d\n\n", casterLevel, engineering)
-
 	if !*verbose {
 		// Create a new table
 		table := simpletable.New()
