@@ -640,6 +640,9 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 		if idx, ok := colIdx["extend"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
 			feats = append(feats, "extend")
 		}
+		if idx, ok := colIdx["toppling"]; ok && idx < len(record) && strings.EqualFold(record[idx], "Yes") {
+			feats = append(feats, "toppling")
+		}
 		spell.MetamagicFeats = feats
 
 		// Parse Reach level (new integer-based approach)
