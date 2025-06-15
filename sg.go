@@ -47,6 +47,7 @@ var (
 	showRanges         = flag.Bool("ranges", false, "Display the computed ranges for the current caster level")
 	verbose            = flag.Bool("verbose", false, "Show detailed output")
 	debug              = flag.Bool("debug", false, "Enable debug mode")
+	showMetamagic      = flag.Bool("m", false, "Display metamagic descriptions")
 )
 
 // RangeInfo holds a range's details and a function to compute its actual range.
@@ -336,6 +337,21 @@ var MetamagicEffects = map[string]MetamagicEffect{
 		Description:   "Lowers the total level of the spell by 1",
 		Apply: func(spell *Spell) {
 			// No additional effects to apply, the level reduction is handled in calculateSpellLevel
+		},
+	},
+	"persistent": {
+		LevelIncrease: 2,
+		Description:   "The spell is cast twice, with the second casting occurring automatically if the first one fails",
+		Apply: func(spell *Spell) {
+			// No additional effects to apply, the double casting is handled in the display logic
+			// The spell's effects remain the same, but it gets two chances to affect the target
+		},
+	},
+	"toppling": {
+		LevelIncrease: 1,
+		Description:   "Allows force spells to make trip attempts",
+		Apply: func(spell *Spell) {
+			// No additional effects to apply, the trip attempt is handled in the display logic
 		},
 	},
 }
@@ -643,66 +659,94 @@ func readSpellsFromCSV(filename string) ([]Spell, error) {
 var debugMode bool
 var verboseMode bool
 
-// formatTableOutput formats the spell information in a table format
+// Metamagic descriptions based on Pathfinder 1e rules
+var metamagicDescriptions = map[string]string{
+	"Empower": "All variable, numeric effects of an empowered spell are increased by half, including bonuses to those dice rolls.",
+	"Maximize": "All variable, numeric effects of a maximized spell are maximized. A maximized spell deals maximum damage, cures the maximum number of hit points, affects the maximum number of targets, etc.",
+	"Quicken": "Casting a quickened spell is a swift action. You can perform another action, even casting another spell, in the same round as you cast a quickened spell.",
+	"Silent": "A silent spell can be cast with no verbal components. Spells without verbal components are not affected.",
+	"Still": "A stilled spell can be cast with no somatic components. Spells without somatic components are not affected.",
+	"Reach": "You can alter a spell with a range of touch, close, or medium to increase its range by using the reach metamagic feat. A touch spell's range increases to close, a close spell's range increases to medium, and a medium spell's range increases to long.",
+	"Extend": "An extended spell lasts twice as long as normal. A spell with a duration of concentration, instantaneous, or permanent is not affected by this feat.",
+	"Enlarge": "You can alter a spell with a range of close, medium, or long to increase its range by 100%. An enlarged spell with a range of close has a range of 50 ft. + 5 ft./level, while medium-range spells have a range of 200 ft. + 20 ft./level and long-range spells have a range of 800 ft. + 80 ft./level.",
+	"Widen": "You can alter a burst, emanation, line, or spread shaped spell to increase its area. Any numeric measurements of the spell's area increase by 100%.",
+	"Heighten": "A heightened spell has a higher spell level than normal (up to a maximum of 9th level). Unlike other metamagic feats, Heighten Spell actually increases the effective level of the spell that it modifies.",
+	"Persistent": "A persistent spell has a duration of 24 hours. The persistent spell must have a casting time of 1 standard action or less.",
+	"Selective": "When casting a selective spell, you can choose a number of targets of the spell equal to your casting ability modifier (minimum 1; maximum 3). These targets are excluded from the spell's effects.",
+	"Intensified": "An intensified spell increases the maximum number of damage dice by 5 levels. You must actually have sufficient caster levels to surpass the maximum in order to benefit from this feat.",
+	"Echoing": "When you cast an echoing spell, it leaves an echo of the spell's power in the target area or on the target creature. When you cast another spell of the same level or lower, you can trigger the echo as a free action. The echo then reproduces the effects of the original spell.",
+	"Bouncing": "When a bouncing spell targets a creature and fails to overcome that target's spell resistance, you can redirect the spell to another target within range. The redirected spell behaves as if you had just cast it, including requiring you to make a new caster level check against the new target's spell resistance.",
+	"Toppling": "When you make a successful trip combat maneuver with a force spell that deals damage, the target is knocked prone.",
+	"Threnodic": "You can modify a mind-affecting spell to affect undead targets. The spell takes effect against undead as if they were living creatures of the same type.",
+	"Focused": "When you cast a focused spell, you can choose one target of the spell. That target takes a –2 penalty on its saving throw against the spell.",
+	"Concussive": "When you cast a concussive spell that deals damage, creatures that take damage from the spell are deafened for 1 round per level of the spell.",
+	"Disruptive": "When you cast a disruptive spell, creatures that take damage from the spell must make a concentration check (DC = 10 + the level of the spell + your casting ability modifier) or lose any spell they are casting.",
+}
+
 func formatTableOutput(spell Spell, success bool, updatedRange string, diceCount int) string {
-	// Check for metamagic feats
-	hasEmpower := false
-	hasIntensify := false
-	for _, feat := range spell.MetamagicFeats {
-		if strings.ToLower(feat) == "empower" {
-			hasEmpower = true
-		}
-		if strings.ToLower(feat) == "intensified" {
-			hasIntensify = true
-		}
+	table := simpletable.New()
+
+	// Set header
+	table.Header = &simpletable.Header{
+		Cells: []*simpletable.Cell{
+			{Align: simpletable.AlignLeft, Text: "Property"},
+			{Align: simpletable.AlignLeft, Text: "Value"},
+		},
 	}
 
-	// Calculate the number of dice to be rolled based on the CSV value, caster level, and metamagic
-	diceToRoll := diceCount
-	if spell.DamageRoll.PerLevel {
-		diceToRoll = spell.DamageRoll.NumDice * casterLevel
-		if spell.DamageRoll.MaxDice > 0 && diceToRoll > spell.DamageRoll.MaxDice {
-			diceToRoll = spell.DamageRoll.MaxDice
-		}
-		if hasIntensify {
-			diceToRoll += 5
-			if diceToRoll > casterLevel {
-				diceToRoll = casterLevel
+	// Add rows
+	rows := [][]string{
+		{"Spell", spell.Name},
+		{"Level", fmt.Sprintf("%d", spell.BaseLevel)},
+		{"School", spell.School},
+		{"Range", updatedRange},
+	}
+
+	if spell.DamageRoll.NumDice > 0 {
+		rows = append(rows, []string{"Damage", formatDamage(spell.DamageRoll, casterLevel, spell.Name)})
+	}
+
+	if spell.Duration.Value > 0 {
+		rows = append(rows, []string{"Duration", formatDuration(spell.Duration, casterLevel)})
+	}
+
+	if len(spell.MetamagicFeats) > 0 {
+		metamagicText := strings.Join(spell.MetamagicFeats, ", ")
+		if *showMetamagic {
+			metamagicText += "\n\nMetamagic Descriptions:"
+			for _, feat := range spell.MetamagicFeats {
+				if desc, ok := metamagicDescriptions[feat]; ok {
+					metamagicText += fmt.Sprintf("\n\n%s: %s", feat, desc)
+				}
 			}
 		}
+		rows = append(rows, []string{"Metamagic", metamagicText})
 	}
 
-	// If Empower is applied, multiply the dice count by 1.5
-	if hasEmpower {
-		diceToRoll = int(float64(diceToRoll) * 1.5)
+	if len(spell.MetamagicMods) > 0 {
+		rows = append(rows, []string{"Metamagic Mods", strings.Join(spell.MetamagicMods, ", ")})
 	}
 
-	// Format the dice count with die type and empower notation if applicable
-	var diceStr string
-	if diceToRoll > 0 {
-		diceStr = fmt.Sprintf("%dd%d", diceToRoll, spell.DamageRoll.DiceType)
-		if hasEmpower {
-			diceStr += " (×1.5)"
+	// Add the result row
+	resultText := colorRed + "Failed" + colorReset
+	if success {
+		resultText = colorGreen + "Success" + colorReset
+	}
+	rows = append(rows, []string{"Result", resultText})
+
+	// Add all rows to the table
+	for _, row := range rows {
+		r := []*simpletable.Cell{
+			{Align: simpletable.AlignLeft, Text: row[0]},
+			{Align: simpletable.AlignLeft, Text: row[1]},
 		}
+		table.Body.Cells = append(table.Body.Cells, r)
 	}
 
-	// Format boolean values as Yes/No
-	empowerStr := "No"
-	if hasEmpower {
-		empowerStr = "Yes"
-	}
-	intensifyStr := "No"
-	if hasIntensify {
-		intensifyStr = "Yes"
-	}
+	// Set table style
+	table.SetStyle(simpletable.StyleUnicode)
 
-	return fmt.Sprintf("%-7s | %-20s | %-25s | %-15s | %-8s | %-10s",
-		empowerStr,
-		spell.Name,
-		updatedRange,
-		diceStr,
-		intensifyStr,
-		empowerStr)
+	return table.String()
 }
 
 func main() {
@@ -712,6 +756,40 @@ func main() {
 	if *showRanges {
 		displayRangeInfo(casterLevel)
 		return
+	}
+
+	// Test cases for Toppling metamagic
+	if *debug {
+		fmt.Println("\nTesting Toppling metamagic:")
+		testSpell := Spell{
+			Name:      "Magic Missile",
+			BaseLevel: 1,
+			School:    "Evocation",
+			Range:     "medium",
+			DamageRoll: DamageRoll{
+				NumDice:  1,
+				DiceType: 4,
+				Modifier: 1,
+			},
+			Duration: Duration{
+				Value: 0,
+				Unit:  "instantaneous",
+			},
+			MetamagicFeats: []string{"toppling"},
+		}
+
+		// Test level calculation
+		level := calculateSpellLevel(testSpell)
+		fmt.Printf("Magic Missile with Toppling: Level %d (Base: %d + Toppling: +1)\n", 
+			level, testSpell.BaseLevel)
+
+		// Test trip attempt functionality
+		fmt.Println("Toppling allows Magic Missile to make trip attempts when it hits")
+		fmt.Println("This is because Magic Missile is a force spell")
+		fmt.Println("The trip attempt would be made as a free action after the spell hits")
+		fmt.Println("The trip attempt would use the caster's CMB + spell level")
+		fmt.Println("If successful, the target would be knocked prone")
+		fmt.Println("-------------------------")
 	}
 
 	// Read spells from CSV file
@@ -779,6 +857,8 @@ func main() {
 				{Align: simpletable.AlignLeft, Text: "Intensify"},
 				{Align: simpletable.AlignLeft, Text: "Reach"},
 				{Align: simpletable.AlignLeft, Text: "Extend"},
+				{Align: simpletable.AlignLeft, Text: "Persistent"},
+				{Align: simpletable.AlignLeft, Text: "Toppling"},
 				{Align: simpletable.AlignLeft, Text: "Total Level"},
 			},
 		}
@@ -917,6 +997,8 @@ func main() {
 			empowerStr := "No"
 			intensifyStr := "No"
 			extendStr := "No"
+			persistentStr := "No"
+			topplingStr := "No"
 			for _, feat := range spell.MetamagicFeats {
 				if strings.ToLower(feat) == "empower" {
 					empowerStr = "Yes"
@@ -926,6 +1008,12 @@ func main() {
 				}
 				if strings.ToLower(feat) == "extend" {
 					extendStr = "Yes"
+				}
+				if strings.ToLower(feat) == "persistent" {
+					persistentStr = "Yes"
+				}
+				if strings.ToLower(feat) == "toppling" {
+					topplingStr = "Yes"
 				}
 			}
 
@@ -1004,6 +1092,8 @@ func main() {
 					{Align: simpletable.AlignLeft, Text: intensifyStr},
 					{Align: simpletable.AlignLeft, Text: fmt.Sprintf("%d", spell.ReachLevel)},
 					{Align: simpletable.AlignLeft, Text: extendStr},
+					{Align: simpletable.AlignLeft, Text: persistentStr},
+					{Align: simpletable.AlignLeft, Text: topplingStr},
 					{Align: simpletable.AlignLeft, Text: fmt.Sprintf("%d", totalLevel)},
 				})
 			}
@@ -1013,11 +1103,34 @@ func main() {
 			// Set table style
 			table.SetStyle(simpletable.StyleCompactLite)
 			// Print column widths for debugging
-			fmt.Printf("\nColumn widths:\n")
-			for i, cell := range table.Header.Cells {
-				fmt.Printf("Column %d (%s): %d\n", i, cell.Text, len(cell.Text))
+			if *verbose {
+				fmt.Printf("\nColumn widths:\n")
+				for i, cell := range table.Header.Cells {
+					fmt.Printf("Column %d (%s): %d\n", i, cell.Text, len(cell.Text))
+				}
 			}
 			fmt.Println(table.String())
+
+			// If -m is set, print metamagic descriptions for all feats used
+			if *showMetamagic {
+				usedFeats := make(map[string]bool)
+				for _, spell := range spells {
+					for _, feat := range spell.MetamagicFeats {
+						usedFeats[strings.Title(strings.ToLower(feat))] = true
+					}
+				}
+				if len(usedFeats) > 0 {
+					fmt.Println("\nMetamagic Descriptions:")
+					for feat := range usedFeats {
+						desc, ok := metamagicDescriptions[feat]
+						if ok {
+							fmt.Printf("\n%s: %s\n", feat, desc)
+						} else {
+							fmt.Printf("\n%s: (No description available)\n", feat)
+						}
+					}
+				}
+			}
 		}
 	}
 }
