@@ -41,8 +41,8 @@ const (
 )
 
 var (
-	casterLevel        = 6
-	engineering        = 6
+	casterLevel        = 7
+	engineering        = 7
 	TransmuterOfKorada = true // When true, Transmutation spells get +1 caster level
 	showRanges         = flag.Bool("ranges", false, "Display the computed ranges for the current caster level")
 	verbose            = flag.Bool("verbose", false, "Show detailed output")
