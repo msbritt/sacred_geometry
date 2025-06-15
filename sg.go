@@ -341,7 +341,7 @@ var MetamagicEffects = map[string]MetamagicEffect{
 	},
 	"persistent": {
 		LevelIncrease: 2,
-		Description:   "The spell is cast twice, with the second casting occurring automatically if the first one fails",
+		Description:   "Whenever a creature targeted by a persistent spell or within its area succeeds on its saving throw against the spell, it must make another saving throw against the effect. If a creature fails this second saving throw, it suffers the full effects of the spell as if it had failed its first saving throw.",
 		Apply: func(spell *Spell) {
 			// No additional effects to apply, the double casting is handled in the display logic
 			// The spell's effects remain the same, but it gets two chances to affect the target
@@ -671,12 +671,12 @@ var metamagicDescriptions = map[string]string{
 	"Enlarge": "You can alter a spell with a range of close, medium, or long to increase its range by 100%. An enlarged spell with a range of close has a range of 50 ft. + 5 ft./level, while medium-range spells have a range of 200 ft. + 20 ft./level and long-range spells have a range of 800 ft. + 80 ft./level.",
 	"Widen": "You can alter a burst, emanation, line, or spread shaped spell to increase its area. Any numeric measurements of the spell's area increase by 100%.",
 	"Heighten": "A heightened spell has a higher spell level than normal (up to a maximum of 9th level). Unlike other metamagic feats, Heighten Spell actually increases the effective level of the spell that it modifies.",
-	"Persistent": "A persistent spell has a duration of 24 hours. The persistent spell must have a casting time of 1 standard action or less.",
+	"Persistent": "Whenever a creature targeted by a persistent spell or within its area succeeds on its saving throw against the spell, it must make another saving throw against the effect. If a creature fails this second saving throw, it suffers the full effects of the spell as if it had failed its first saving throw.",
+	"Toppling": "When you make a successful trip combat maneuver with a force spell that deals damage, the target is knocked prone.",
 	"Selective": "When casting a selective spell, you can choose a number of targets of the spell equal to your casting ability modifier (minimum 1; maximum 3). These targets are excluded from the spell's effects.",
 	"Intensified": "An intensified spell increases the maximum number of damage dice by 5 levels. You must actually have sufficient caster levels to surpass the maximum in order to benefit from this feat.",
 	"Echoing": "When you cast an echoing spell, it leaves an echo of the spell's power in the target area or on the target creature. When you cast another spell of the same level or lower, you can trigger the echo as a free action. The echo then reproduces the effects of the original spell.",
 	"Bouncing": "When a bouncing spell targets a creature and fails to overcome that target's spell resistance, you can redirect the spell to another target within range. The redirected spell behaves as if you had just cast it, including requiring you to make a new caster level check against the new target's spell resistance.",
-	"Toppling": "When you make a successful trip combat maneuver with a force spell that deals damage, the target is knocked prone.",
 	"Threnodic": "You can modify a mind-affecting spell to affect undead targets. The spell takes effect against undead as if they were living creatures of the same type.",
 	"Focused": "When you cast a focused spell, you can choose one target of the spell. That target takes a –2 penalty on its saving throw against the spell.",
 	"Concussive": "When you cast a concussive spell that deals damage, creatures that take damage from the spell are deafened for 1 round per level of the spell.",
